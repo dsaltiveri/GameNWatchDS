@@ -1,0 +1,19 @@
+# clangd configuration for GameNWatchDS (Nintendo DS homebrew, BlockDS,
+# rom_combined structure with ARM9 and ARM7 cores).
+#
+# The project is compiled with the GCC cross toolchain `arm-none-eabi-gcc`,
+# so the compile commands generated in compile_commands.json contain
+# GCC-specific flags that clang/clangd doesn't understand:
+#   - `-specs=...`  : GCC specs file, not supported by clang.
+#   - `-mcpu=arm946e-s+nofp` / `-mthumb`: clang rejects `+nofp`.
+#   - `-MMD` / `-MP` / `-MJ`: dependency/compile-db flags, stripped.
+#
+# The target triple is inferred by clangd from the driver name
+# (`arm-none-eabi-gcc`). `--query-driver` (passed by the clangd VS Code
+# extension, see .vscode/settings.json) lets clangd run the real cross
+# compiler to obtain the system include paths (picolibc/newlib + libgcc).
+CompileFlags:
+  Add: [-D__CLANGD__]
+  Remove: [-specs=*, -m*, -M*]
+Diagnostics:
+  Suppress: "anyx86_interrupt_attribute"

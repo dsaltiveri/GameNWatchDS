@@ -1,0 +1,39 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build (make COMPDB=1)",
+            "type": "shell",
+            "command": "C:/msys64/usr/bin/make.exe",
+            "args": ["COMPDB=1"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "BLOCKSDS": "C:/msys64/opt/blocksds/core",
+                    "BLOCKSDSEXT": "C:/msys64/opt/blocksds/external",
+                    "WONDERFUL_TOOLCHAIN": "C:/msys64/opt/wonderful",
+                    "PATH": "C:/msys64/usr/bin;C:/msys64/opt/wonderful/toolchain/gcc-arm-none-eabi/bin;C:/msys64/opt/wonderful/bin;${env:PATH}"
+                }
+            },
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "C:/msys64/usr/bin/make.exe",
+            "args": ["clean"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "BLOCKSDS": "C:/msys64/opt/blocksds/core",
+                    "BLOCKSDSEXT": "C:/msys64/opt/blocksds/external",
+                    "WONDERFUL_TOOLCHAIN": "C:/msys64/opt/wonderful",
+                    "PATH": "C:/msys64/usr/bin;C:/msys64/opt/wonderful/toolchain/gcc-arm-none-eabi/bin;C:/msys64/opt/wonderful/bin;${env:PATH}"
+                }
+            },
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}

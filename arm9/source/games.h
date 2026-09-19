@@ -1,6 +1,6 @@
 /*
  * Game catalog for the emulator: each entry describes a Game & Watch
- * with its ROM, backdrops and specific behavior (keys, tate mode...).
+ * with its ROM, backdrops and specific behavior (keys, screen layout...).
  */
 #ifndef _GAMES_H_
 #define _GAMES_H_

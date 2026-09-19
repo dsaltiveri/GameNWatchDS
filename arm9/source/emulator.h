@@ -1,7 +1,7 @@
 /*
  * Unified G&W emulator for Nintendo DS (GameNWatchDS).
- * Common LCD rendering core (sprites), odometer-driven audio and the main
- * loop, parameterized per game through game_desc_t.
+ * Common LCD rendering core (direct 16bpp BG3 updates), odometer-paced audio
+ * and the main loop, parameterized per game through game_desc_t.
  */
 #ifndef _EMULATOR_H_
 #define _EMULATOR_H_

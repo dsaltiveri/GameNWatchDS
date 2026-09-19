@@ -113,10 +113,10 @@ and `gw_rom_backdrop(i)` exposes the backdrops to the renderer.
 
 ### Common code (unified)
 
-- `arm9/source/emulator.c` — main loop, audio sync by odometer
-  (TIMER0+TIMER1, 16.16 fixed point), 64x64 tile LCD rendering,
-  pixel→segment→tile map building, tate mode, and all the video/VRAM/OAM
-  setup. It is parameterized with `game_desc_t` (`emulator.h`).
+- `arm9/source/emulator.c` — main loop, audio pacing from the TIMER0+TIMER1
+  cycle odometer, direct 16bpp BG3 LCD rendering in dirty 64x64 regions,
+  pixel→segment→region map building, and video/VRAM setup. It is parameterized
+  with `game_desc_t` (`emulator.h`).
 - `arm9/source/gw_sys/` — G&W system, segment state computation (SM510/511 and
   SM5A), and ROM loader from the SD card (`gw_romloader_load_file` +
   `gw_rom_backdrop`).
@@ -130,7 +130,7 @@ Each `games/game_<name>.c` describes one specific game (keys per MAME
 
 - **game_dkong2.c** — D-pad + A = JUMP.
 - **game_fire.c** — one screen (MAIN), SM5A rendering, keys A/→=RIGHT, Y/←=LEFT.
-- **game_lboat.c** — tate mode with X, keys A/→=RIGHT, Y/←=LEFT.
+- **game_lboat.c** — dual-screen layout, keys A/→=RIGHT, Y/←=LEFT.
 - **game_smbn.c** — SM511 CPU with melody.
 
 ## Build
@@ -149,8 +149,15 @@ python shrinker/shrink_gnw.py --force      # re-render segments (no cache)
 # 2) Compile the .nds (~150 KB, no embedded ROMs)
 make                     # generates GameNWatchDS.nds
 make COMPDB=1            # also generates compile_commands.json (clangd)
-python build_ds.py       # cleans, compiles, syncs the .gnw and opens melonDS
+python build_ds.py       # incremental build, syncs assets and opens melonDS
+python build_ds.py --rebuild --no-launch  # clean rebuild without opening melonDS
+python build_ds.py --sync-only             # only refresh the virtual SD
 ```
+
+`build_ds.py` is an optional Windows/melonDS development helper; the Makefiles
+remain the canonical build interface. Use `--help` for all options. The paths
+to `make`, melonDS and its virtual SD can be changed with command-line options
+or the `GNWDS_MAKE`, `GNWDS_MELONDS` and `GNWDS_SD_DIR` environment variables.
 
 The `.gnw` files are generated in `shrinker/output/gnw/` (segment cache in
 `shrinker/build/`; that folder is not versioned). The menu auto-scans

@@ -1514,7 +1514,8 @@ def _lcd_render(game):
                     bb = seg[nib >> 1]
                     v = (bb & 0xF) if (nib & 1) else (bb >> 4)
                     if v != transparent:
-                        inten_sub[sy, gx] = v
+                        inten_sub[sy, gx] = (max if inverted else min)(
+                            int(inten_sub[sy, gx]), v)
             else:
                 if gy < 0:
                     continue
@@ -1526,7 +1527,8 @@ def _lcd_render(game):
                     bb = seg[nib >> 1]
                     v = (bb & 0xF) if (nib & 1) else (bb >> 4)
                     if v != transparent:
-                        inten_main[gy, gx] = v
+                        inten_main[gy, gx] = (max if inverted else min)(
+                            int(inten_main[gy, gx]), v)
 
     dual = bool((inten_sub != transparent).any())
 
@@ -1596,6 +1598,7 @@ def build_gw(game, force, idx=None, total=None):
     sd = bytearray()
     offs = [0] * 256; xs = [0] * 256; ys = [0] * 256
     ws = [0] * 256; hs = [0] * 256
+    pixel_owners = bytearray(W * H_DS * 2)
     n = 0; nib = 0; pending = 0x0
 
     layr = lay_rects(art)
@@ -1673,6 +1676,16 @@ def build_gw(game, force, idx=None, total=None):
                         v = inten[yy][xx]          # real intensity 0-15
                     else:
                         v = 0x2 if r[yy][xx] else 0xF
+                    gx = xx
+                    gy = ds_y + yy - ry
+                    transparent = 0x0 if inverted else 0xF
+                    if v != transparent and 0 <= gx < W and 0 <= gy < H_DS * 2:
+                        owner_idx = gy * W + gx
+                        pixel_owners[owner_idx] += 1
+                        if pixel_owners[owner_idx] > 2:
+                            raise ValueError(
+                                "%s: more than two segments overlap at pixel (%d, %d), slot %d"
+                                % (game, gx, gy, slot))
                     if nib & 1 == 0:
                         pending = v << 4
                     else:

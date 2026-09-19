@@ -1,10 +1,10 @@
 /*
  * Unified G&W emulator for Nintendo DS (GameNWatchDS).
- * Common emulator core: LCD rendered as merged 64x64 sprites, a 16bpp BG3
- * background and audio driven by a real 32-bit odometer of DAC cycles.
+ * Common emulator core: LCD rendered directly into 16bpp BG3 framebuffers,
+ * with dirty 64x64 regions and audio paced by a 32-bit cycle odometer.
  * It unifies the code shared by all G&W games. What is specific to each game
- * (keys, tate mode, keyboard patches, ROM and backgrounds) lives in
- * games/game_*.c + the .s of games/<game>/, described by game_desc_t.
+ * (keys, display layout, keyboard patches, ROM and backgrounds) lives in
+ * games/game_*.c and is described by game_desc_t.
  */
 #include <nds.h>
 #include <stdio.h>
@@ -19,7 +19,7 @@
 #define TILE 64
 #define TILES_X 4          /* 256 / 64 */
 #define TILES_Y 3          /* 192 / 64 */
-#define TILES_N (TILES_X * TILES_Y)  /* 12 sprites per screen */
+#define TILES_N (TILES_X * TILES_Y)  /* 12 dirty regions per screen */
 
 static const game_desc_t *g_game = NULL;
 
@@ -34,27 +34,21 @@ u32 gw_buttons_state = 0;
 unsigned int gw_get_buttons(void){ return gw_buttons_state; }
 
 #define AUDIO_SAMPLES GW_AUDIO_BUFFER_LENGTH   /* 546 = 32768/60 */
-#define AUDIO_LOOP_FRAMES 16                     /* 16-frame headroom in the loop buffer */
+#define AUDIO_LOOP_FRAMES 16                     /* circular-buffer capacity */
+#define AUDIO_START_LEAD_FRAMES 2                /* initial producer lead */
 #define AUDIO_LOOP_LEN (AUDIO_SAMPLES * AUDIO_LOOP_FRAMES)
 
 static s16 audio_pcm[AUDIO_SAMPLES] __attribute__((aligned(4)));
 static s16 audio_loop[AUDIO_LOOP_LEN] __attribute__((aligned(4)));
 
-#define SEG_SPRITE_COLOR RGB15(0,0,0)  /* segment color from the SVG: #000000 */
-
 typedef struct {
-    OamState *oam;
     u8  pixel_seg[FBH][FBW];      /* pixel -> segment (0xFF = empty) */
     u8  pixel_int[FBH][FBW];      /* 4-bit intensity of the pixel (0-15) */
     u8  pixel_seg2[FBH][FBW];     /* 2nd segment claiming the pixel (0xFF = empty) */
-    u8  pixel_int2[FBH][FBW];     /* its 4-bit intensity (OR, like the reference emulator) */
-    u8 *tile_gfx[TILES_N];        /* VRAM of the 12 64x64 tiles */
+    u8  pixel_int2[FBH][FBW];     /* its 4-bit intensity */
     u8  tile_dirty[TILES_N];
     u8  seg_tiles[256][TILES_N];  /* segment -> tiles it touches (0xFF = end) */
-    u8  seg_tiles_tate[256][TILES_N]; /* same, tate orientation (rotated) */
     unsigned char seg_prev[256];
-    int  esc_y0;                  /* first pixel_seg row of the scene */
-    void *tate_src;               /* scene this screen shows in tate */
     const u16 *bg;                /* RGB565 background from the .gnw (color artwork) */
     u16 *fb;                      /* BG3 framebuffer (BG_GFX / BG_GFX_SUB) */
 } screen_t;
@@ -77,17 +71,19 @@ static screen_t scr_sub;
    Index 0..3: bit0 = +8000, bit1 = -8000 (differential). */
 static const s16 audio_levels[4] = { 0, 8000, -8000, 0 };
 
-/* 100% reliable audio synchronisation.
-   It measures the REAL elapsed cycles with a 32-bit odometer (TIMER0+TIMER1
-   in cascade, no IRQ) and writes exactly the samples the DAC consumes,
-   accumulating the remainder in 16.16 fixed point (never lost). With the
-   exact AUDIO_CPS (below) the fractional remainder is bounded and the net
-   drift is mathematically zero. The emulator advances ONLY when the audio
-   demands it (logical frames of 546 samples). */
+/* Audio pacing based on elapsed bus cycles.
+   TIMER0+TIMER1 form a monotonic 32-bit odometer (no IRQ). The remainder
+   modulo AUDIO_CPS is preserved between updates, so the integer conversion
+   from elapsed cycles to whole samples has no cumulative division loss.
+
+   This follows the nominal playback rate configured by libnds, but it does
+   not expose the sound channel's hardware cursor and therefore cannot detect
+   or recover an underrun. The emulator advances in logical 546-sample blocks
+   as the cycle-derived sample demand consumes them. */
 static u32 audio_odometer = 0;
-static u64 audio_frac = 0;              /* 16.16 accumulator of samples to write */
+static u64 audio_cycle_accum = 0;       /* unconsumed bus cycles (< AUDIO_CPS after update) */
 static int  audio_frame_pos = 0;        /* position within the logical 546-sample frame */
-static int  audio_loop_idx = 2 * AUDIO_SAMPLES;  /* 2 frames ahead of the playback head */
+static int  audio_loop_idx = AUDIO_START_LEAD_FRAMES * AUDIO_SAMPLES;
 
 /* libnds sound channel playing audio_loop in a loop. soundPlaySample()
    selects a free channel (round-robin); it must be killed when leaving the
@@ -96,12 +92,11 @@ static int  audio_loop_idx = 2 * AUDIO_SAMPLES;  /* 2 frames ahead of the playba
    channel and after a few games the 16 channels run out and audio distorts. */
 static int audio_channel = -1;
 
-/* Exact, deterministic bus cycles per DAC sample.
+/* Bus cycles per sample for the rate programmed by libnds.
    libnds sets the channel TMR for 32768 Hz to -511, and the hardware plays at
-   BUS_CLOCK / ((0x10000 - TMR) * 2) = 1022 bus cycles per sample. It is the same
-   formula on real hardware and in emulators (no$gba, melonDS...), so there is no
-   uncertainty to measure: the DAC ALWAYS consumes 1022 cycles per sample with the
-   TMR that libnds writes. */
+   BUS_CLOCK / ((0x10000 - TMR) * 2) = 1022 bus cycles per sample. The odometer
+   uses this programmed rate as its pacing reference; it is not a playback-position
+   query. */
 #define AUDIO_CPS 1022
 
 static u32 read_odometer(void)
@@ -208,25 +203,38 @@ static void audio_write_samples(int n)
 }
 
 /* ---------------- LCD render by tiles ---------------- */
-static void init_screen(screen_t *s, OamState *oam){
+static void init_screen(screen_t *s){
     memset(s, 0, sizeof(*s));
-    s->oam = oam;
 
     memset(s->pixel_seg, 0xFF, sizeof(s->pixel_seg));
     memset(s->pixel_int, 0, sizeof(s->pixel_int));
     memset(s->pixel_seg2, 0xFF, sizeof(s->pixel_seg2));
     memset(s->pixel_int2, 0, sizeof(s->pixel_int2));
     memset(s->seg_tiles, 0xFF, sizeof(s->seg_tiles));
-    memset(s->seg_tiles_tate, 0xFF, sizeof(s->seg_tiles_tate));
-
-    /* Render (normal and inverted) writes directly to BG3 via
-       rebuild_tile; no sprites are used. */
-    return;
 }
 
-/* Rebuilds a tile of screen s's framebuffer.
-   In tate mode it samples the scene (s->tate_src) through the inverse
-   transform (CCW rotation + 3/4 scale); outside the scene it stays transparent. */
+/* Returns the visible 4-bit intensity for all active segments claiming one
+   pixel, or -1 if none is active. Normal LCD artwork is darkened, so the
+   lowest intensity wins; inverted LCD artwork is revealed, so the highest
+   intensity wins. This makes overlaps independent of segment ordering. */
+static int pixel_active_intensity(const screen_t *s, int x, int y,
+                                  const unsigned char *seg_on, bool inverted){
+    int intensity = -1;
+    u8 seg = s->pixel_seg[y][x];
+    u8 seg2 = s->pixel_seg2[y][x];
+
+    if(seg != 0xFF && seg_on[seg])
+        intensity = s->pixel_int[y][x];
+
+    if(seg2 != 0xFF && seg_on[seg2]){
+        int second = s->pixel_int2[y][x];
+        if(intensity < 0 || (inverted ? second > intensity : second < intensity))
+            intensity = second;
+    }
+    return intensity;
+}
+
+/* Rebuilds one 64x64 dirty region directly in screen s's BG3 framebuffer. */
 static void rebuild_tile(screen_t *s, int t, const unsigned char *seg_on){
     int ox = (t % TILES_X) * TILE;
     int oy = (t / TILES_X) * TILE;
@@ -245,15 +253,9 @@ static void rebuild_tile(screen_t *s, int t, const unsigned char *seg_on){
                 int fx = ox + xx;
                 if(fx < 0 || fx >= FBW) continue;
                 u16 c = 0;
-                u8 sg = s->pixel_seg[fy][fx];
-                u8 sg2 = s->pixel_seg2[fy][fx];
-                if(sg != 0xFF && seg_on[sg]){
+                int n = pixel_active_intensity(s, fx, fy, seg_on, true);
+                if(n >= 0){
                     /* expand the 4-bit intensity to 8 bits (0x0F -> 0xFF) */
-                    u8 n = s->pixel_int[fy][fx];
-                    u8 cur8 = (u8)((n << 4) | n);
-                    c = rgb_multiply_nds(bg[fy*FBW + fx], cur8);
-                } else if(sg2 != 0xFF && seg_on[sg2]){
-                    u8 n = s->pixel_int2[fy][fx];
                     u8 cur8 = (u8)((n << 4) | n);
                     c = rgb_multiply_nds(bg[fy*FBW + fx], cur8);
                 }
@@ -275,15 +277,9 @@ static void rebuild_tile(screen_t *s, int t, const unsigned char *seg_on){
             int fx = ox + xx;
             if(fx < 0 || fx >= FBW) continue;
             u16 c = bg[fy*FBW + fx];
-            u8 sg = s->pixel_seg[fy][fx];
-            u8 sg2 = s->pixel_seg2[fy][fx];
+            int n = pixel_active_intensity(s, fx, fy, seg_on, false);
             u8 cur8 = 255;
-            if(sg != 0xFF && seg_on[sg]){
-                u8 n = s->pixel_int[fy][fx];
-                cur8 = (u8)((n << 4) | n);
-                if(cur8 == 0) cur8 = 39;
-            } else if(sg2 != 0xFF && seg_on[sg2]){
-                u8 n = s->pixel_int2[fy][fx];
+            if(n >= 0){
                 cur8 = (u8)((n << 4) | n);
                 if(cur8 == 0) cur8 = 39;
             }
@@ -356,39 +352,32 @@ static void rebuild_tile(screen_t *s, int t, const unsigned char *seg_on){
     }
 }
 
-/* Updates the sprites of disp with the segments of scene.
-   In landscape and tate, scene == disp: each screen shows its own scene. */
-static void update_screen(screen_t *scene, screen_t *disp,
-                          const unsigned char *seg_on){
-    /* Segment->tiles table depending on the mode: in tate the scene is rotated
-       (seg_tiles_tate), in landscape the normal table (seg_tiles). */
-    const u8 (*tlist)[TILES_N] = scene->seg_tiles;
+/* Marks regions touched by changed segments and rebuilds them in BG3. */
+static void update_screen(screen_t *s, const unsigned char *seg_on){
     /* mark tiles touched by segments that changed */
     for(int seg=0; seg<256; seg++){
-        if(seg_on[seg] != scene->seg_prev[seg]){
+        if(seg_on[seg] != s->seg_prev[seg]){
             for(int i=0; i<TILES_N; i++){
-                u8 t = tlist[seg][i];
+                u8 t = s->seg_tiles[seg][i];
                 if(t == 0xFF) break;
-                if(t < TILES_N) disp->tile_dirty[t] = 1;
+                if(t < TILES_N) s->tile_dirty[t] = 1;
             }
-            scene->seg_prev[seg] = seg_on[seg];
+            s->seg_prev[seg] = seg_on[seg];
         }
     }
 
     /* rebuild dirty tiles */
     for(int t=0; t<TILES_N; t++){
-        if(disp->tile_dirty[t]){
-            rebuild_tile(disp, t, seg_on);
-            disp->tile_dirty[t] = 0;
+        if(s->tile_dirty[t]){
+            rebuild_tile(s, t, seg_on);
+            s->tile_dirty[t] = 0;
         }
     }
 }
 
-/* ---------------- rotated (tate) mode: tables and backdrops ---------------- */
-/* Copies the landscape backgrounds to the framebuffer depending on the
-   game config (bg assignment).
+/* Copies the backgrounds to BG3 according to the game's screen assignment.
    In inverted LCD mode (Panorama/Tabletop) the background stays black:
-   colored artwork is revealed ONLY where segment sprites display pixels. */
+   colored artwork is revealed only at active segment pixels. */
 static void dma_backdrops(void){
     if(g_game->lcd_inverted){
         dmaFillWords(0x0000, BG_GFX, FBW*FBH*2);
@@ -415,9 +404,7 @@ static int emulator_init(void){
     videoSetModeSub(MODE_5_2D);
 
     vramSetBankA(VRAM_A_MAIN_BG);
-    vramSetBankB(VRAM_B_MAIN_SPRITE);
     vramSetBankC(VRAM_C_SUB_BG);
-    vramSetBankD(VRAM_D_SUB_SPRITE);
 
     bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
     bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
@@ -435,17 +422,9 @@ static int emulator_init(void){
 
     dma_backdrops();
 
-    oamInit(&oamMain, SpriteMapping_1D_64, false);
-    oamInit(&oamSub, SpriteMapping_1D_64, false);
-    oamEnable(&oamMain);
-    oamEnable(&oamSub);
-
-    SPRITE_PALETTE[1] = SEG_SPRITE_COLOR;
-    SPRITE_PALETTE_SUB[1] = SEG_SPRITE_COLOR;
-
-    init_screen(&scr_main, &oamMain);
+    init_screen(&scr_main);
     if(g_game->dual_screen)
-        init_screen(&scr_sub, &oamSub);
+        init_screen(&scr_sub);
 
     /* In inverted LCD the segments write directly to the BG3 framebuffer and
        read the color artwork from the .gnw background (topNS/bottomNS depending
@@ -456,7 +435,23 @@ static int emulator_init(void){
     scr_main.fb = BG_GFX;
     scr_sub.fb  = BG_GFX_SUB;
 
-    gw_system_config(); gw_system_start(); gw_system_reset();
+    if (!gw_system_config())
+    {
+        /* Unknown CPU or failed setup (e.g. SM511/512 without melody data):
+           never start the emulation loop with uninitialized device hooks. */
+        consoleDemoInit();
+        printf("CPU ERROR: %s\n", g_game->name);
+        printf("gw_system_config failed\n");
+        while (1)
+        {
+            swiWaitForVBlank();
+            scanKeys();
+            if (keysDown() & (KEY_A | KEY_B | KEY_START))
+                break;
+        }
+        return 0;
+    }
+    gw_system_start(); gw_system_reset();
 
     soundEnable();
     gw_system_sound_init();
@@ -467,8 +462,8 @@ static int emulator_init(void){
        the loop overwrites it). */
     memset(audio_loop, 0, sizeof(audio_loop));
     audio_frame_pos = 0;
-    audio_frac = 0;
-    audio_loop_idx = 2 * AUDIO_SAMPLES;
+    audio_cycle_accum = 0;
+    audio_loop_idx = AUDIO_START_LEAD_FRAMES * AUDIO_SAMPLES;
 
     /* Starts continuous playback ONCE with loop=true
        over the whole circular buffer. */
@@ -511,19 +506,20 @@ int emulator_run(const game_desc_t *g){
 
         gw_buttons_state = g_game->update_buttons();
 
-        /* Measures the REAL DAC consumption since the last frame and writes
-           exactly the consumed samples, accumulating the remainder in 16.16
-           fixed point with the exact AUDIO_CPS: mathematically impossible drift. */
+        /* Convert elapsed bus cycles to whole samples at the programmed channel
+           rate. Keeping the modulo-AUDIO_CPS remainder avoids cumulative loss
+           from integer division, but does not reveal the real playback cursor. */
         u32 now = read_odometer();
         u32 delta = (u32)(now - audio_odometer);
         audio_odometer = now;
 
-        audio_frac += ((u64)delta << 16) / AUDIO_CPS;
-        int n = (int)(audio_frac >> 16);
-        audio_frac &= 0xFFFF;
+        audio_cycle_accum += delta;
+        int n = (int)(audio_cycle_accum / AUDIO_CPS);
+        audio_cycle_accum %= AUDIO_CPS;
 
-        /* Advances the emulator ONLY when the audio demands it and writes the n
-           samples into the ring buffer, always ahead of the playback head. */
+        /* Advance according to sample demand and write into the circular buffer.
+           Under normal frame timing the producer remains ahead; there is no
+           explicit recovery if a long stall exhausts the initial two-frame lead. */
         audio_write_samples(n);
 
         /* Segment states: SM510/511 via RAM H, or SM5A via O/W outputs. */
@@ -532,13 +528,11 @@ int emulator_run(const game_desc_t *g){
         else
             gw_calc_segment_states(seg_on);
 
-        update_screen(&scr_main, &scr_main, seg_on);
+        update_screen(&scr_main, seg_on);
         if(g_game->dual_screen)
-            update_screen(&scr_sub, &scr_sub, seg_on);
+            update_screen(&scr_sub, seg_on);
 
         swiWaitForVBlank();
-        oamUpdate(&oamMain);
-        oamUpdate(&oamSub);
     }
 
     /* Back to the menu: kill the audio channel (soundDisable() does not release
@@ -600,8 +594,8 @@ static void build_maps(void){
                         s->pixel_int[gy][gx] = n;
                     } else if(s->pixel_seg[gy][gx] != seg &&
                               s->pixel_seg2[gy][gx] == 0xFF){
-                        /* 2nd segment claiming the same pixel: it is drawn if EITHER of the two
-                           is lit (same as the OR in the LCD-Game-Emulator render). */
+                        /* 2nd segment claiming the same pixel. rebuild_tile()
+                           combines the active intensities independently of order. */
                         s->pixel_seg2[gy][gx] = (u8)seg;
                         s->pixel_int2[gy][gx] = n;
                     }

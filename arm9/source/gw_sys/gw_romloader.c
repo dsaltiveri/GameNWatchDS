@@ -33,16 +33,79 @@ unsigned int *gw_keyboard = NULL;
 
 gwromheader_t gw_head;
 
+/* Validates one .gnw block: offset+size must fit inside the buffer
+   (overflow protection against corrupt files) and offset must be aligned
+   to the element size of the array (no unaligned 16/32-bit reads). */
+static bool block_ok(const char *name, unsigned int offset, unsigned int size,
+                     unsigned int rom_size, unsigned int align)
+{
+   if (size == 0)
+   {
+      printf("GW block empty: %s\n", name);
+      return false;
+   }
+   if (offset > rom_size || size > rom_size - offset)
+   {
+      printf("GW block out of range: %s (off=%u size=%u rom=%u)\n",
+             name, offset, size, rom_size);
+      return false;
+   }
+   if ((offset & (align - 1)) || (size & (align - 1)))
+   {
+      printf("GW block misaligned: %s (off=%u size=%u align=%u)\n",
+             name, offset, size, align);
+      return false;
+   }
+   return true;
+}
+
 bool gw_romloader_load(const unsigned char *rom, unsigned int rom_size)
 {
-   loaded_rom_size = rom_size;
+   /* Stale pointers from a previously loaded game must not survive: in
+      particular gw_melody, which changes the audio filter and the SM511
+      melody path for the next game. */
+   loaded_rom_size = 0;
+   gw_segments = NULL;
+   gw_segments_x = NULL;
+   gw_segments_y = NULL;
+   gw_segments_width = NULL;
+   gw_segments_height = NULL;
+   gw_segments_offset = NULL;
+   gw_program = NULL;
+   gw_melody = NULL;
+   gw_keyboard = NULL;
+
+   if (!rom || rom_size < sizeof(gw_head))
+   {
+      printf("GW header truncated: size=%u, header=%u\n",
+             rom_size, (unsigned int)sizeof(gw_head));
+      return false;
+   }
 
    /* Read the ROM header. */
    memcpy(&gw_head, rom, sizeof(gw_head));
 
-   /* Check size against the last object in the file: if the .gnw carries
-      backdrops, background_pixel is the last block; otherwise it is the
-      keyboard table. */
+   /* Validate EVERY block of the header: offset+size must stay inside the
+      buffer (a corrupt .gnw must fail to load, not read out of bounds), and
+      the 16/32-bit arrays must be aligned (no unaligned reads on ARM9). */
+   if (!block_ok("segments_pixel", gw_head.segments_pixel, gw_head.segments_pixel_size, rom_size, 1) ||
+       !block_ok("segments_offset", gw_head.segments_offset, gw_head.segments_offset_size, rom_size, 4) ||
+       !block_ok("segments_x", gw_head.segments_x, gw_head.segments_x_size, rom_size, 2) ||
+       !block_ok("segments_y", gw_head.segments_y, gw_head.segments_y_size, rom_size, 2) ||
+       !block_ok("segments_width", gw_head.segments_width, gw_head.segments_width_size, rom_size, 2) ||
+       !block_ok("segments_height", gw_head.segments_height, gw_head.segments_height_size, rom_size, 2) ||
+       !block_ok("program", gw_head.program, gw_head.program_size, rom_size, 1) ||
+       !block_ok("keyboard", gw_head.keyboard, gw_head.keyboard_size, rom_size, 4))
+      return false;
+   if (gw_head.melody_size != 0 &&
+       !block_ok("melody", gw_head.melody, gw_head.melody_size, rom_size, 1))
+      return false;
+   if (gw_head.background_pixel_size != 0 &&
+       !block_ok("background_pixel", gw_head.background_pixel, gw_head.background_pixel_size, rom_size, 1))
+      return false;
+
+   /* Preserve the format invariant that the final block ends exactly at EOF.
+      This is evaluated only after block_ok(), so offset+size cannot overflow. */
    unsigned int rom_size_expected = gw_head.keyboard + gw_head.keyboard_size;
    if (gw_head.background_pixel_size != 0)
       rom_size_expected = gw_head.background_pixel + gw_head.background_pixel_size;
@@ -68,6 +131,7 @@ bool gw_romloader_load(const unsigned char *rom, unsigned int rom_size)
    gw_keyboard = (unsigned int *)&rom[gw_head.keyboard];
 
    printf("ROM loaded: %u bytes\n", rom_size);
+   loaded_rom_size = rom_size;
    return true;
 }
 

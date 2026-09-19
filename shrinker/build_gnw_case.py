@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """Builds the CASE previews of the Game & Watch games: composites the case
 artwork (PNG from the artwork ZIP) with the LCD (backdrop + segments) pasted
-into its window/hole and saves it to shrinker/output/gnw/case/gnw_<game>_case.png
-(256x192), stretching the case according to its orientation, along with the
-Bmp16 binary gnw/gnw_<game>.case loaded by the DS menu.
+into its window/hole and saves it to shrinker/output/gnw/case/gnw_<game>.png
+(256x192), stretching the case according to its orientation. The DS menu
+decodes that PNG directly from /gnw/case/ on the SD card.
 
 It is independent of shrink_gnw.py: it reuses its GAMES, ROOT, GNW_DIR and the
 geometry/render functions (lay_rects, _lcd_render, flatten_alpha,

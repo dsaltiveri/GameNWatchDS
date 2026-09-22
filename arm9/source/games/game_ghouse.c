@@ -7,6 +7,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 green_house_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -27,6 +28,8 @@ static u32 green_house_update_buttons(void){
 const game_desc_t game_ghouse = {
     .name = "Green House",
     .rom_path = "/gnw/gnw_ghouse.gnw",
+    .cpu = ROM_CPU_SM510,
+    .rom_sig = "w_green_",
     .dual_screen = 1,
     .main_uses_top = 1,
     .use_sm5a = 0,

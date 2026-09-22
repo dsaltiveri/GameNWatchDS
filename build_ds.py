@@ -3,7 +3,7 @@
 
 The Makefiles remain the canonical build interface. This helper adds the
 Windows development workflow around them: incremental/rebuild builds,
-generation of missing game assets, synchronization to a melonDS virtual SD,
+generation of missing .gnw files, synchronization to a melonDS virtual SD,
 and optional emulator launch.
 """
 
@@ -119,40 +119,12 @@ def ensure_gnw(game_files, env):
     return True
 
 
-def ensure_case_previews(game_files, env):
-    """Regenerates case previews required by the catalog when any are missing."""
-    case_dir = GNW_DIR / "case"
-    expected = [Path(name).with_suffix(".png").name for name in game_files]
-    missing = [name for name in expected if not (case_dir / name).is_file()]
-    if not missing:
-        return True
-
-    print("Case previews missing: %s" % ", ".join(missing))
-    script = HERE / "shrinker" / "build_gnw_case.py"
-    if len(missing) == 1:
-        game = Path(missing[0]).stem.removeprefix("gnw_")
-        command = [sys.executable, script, "--only", game]
-    else:
-        command = [sys.executable, script]
-    if run(command, env) != 0:
-        return False
-
-    still_missing = [name for name in expected if not (case_dir / name).is_file()]
-    if still_missing:
-        print("ERROR: case previews still missing: %s" %
-              ", ".join(still_missing), file=sys.stderr)
-        return False
-    return True
-
-
 def sync_sd(game_files, sd_dir):
-    """Synchronizes catalog assets and the compiled ROM to a virtual SD."""
+    """Synchronizes the .gnw files and the compiled ROM to a virtual SD."""
     dst_dir = sd_dir / "gnw"
-    case_src = GNW_DIR / "case"
-    case_dst = dst_dir / "case"
 
     try:
-        case_dst.mkdir(parents=True, exist_ok=True)
+        dst_dir.mkdir(parents=True, exist_ok=True)
         print("SYNC SD:", sd_dir)
 
         for name in game_files:
@@ -161,15 +133,6 @@ def sync_sd(game_files, sd_dir):
                 print("ERROR: missing source file: %s" % src, file=sys.stderr)
                 return False
             copied = copy_if_changed(src, dst_dir / name)
-            print("  %-24s %s" % (name, "copied" if copied else "ok (same)"))
-
-        for gnw_name in game_files:
-            name = Path(gnw_name).with_suffix(".png").name
-            src = case_src / name
-            if not src.is_file():
-                print("ERROR: missing case preview: %s" % src, file=sys.stderr)
-                return False
-            copied = copy_if_changed(src, case_dst / name)
             print("  %-24s %s" % (name, "copied" if copied else "ok (same)"))
 
         if not NDS_PATH.is_file():
@@ -265,8 +228,6 @@ def main(argv=None):
 
     if not args.no_sync:
         if not ensure_gnw(game_files, env):
-            return 1
-        if not ensure_case_previews(game_files, env):
             return 1
         if not sync_sd(game_files, Path(args.sd_dir).expanduser()):
             return 1

@@ -9,6 +9,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 dkong2_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -28,6 +29,8 @@ static u32 dkong2_update_buttons(void){
 const game_desc_t game_dkong2 = {
     .name = "Donkey Kong II",
     .rom_path = "/gnw/gnw_dkong2.gnw",
+    .cpu = ROM_CPU_SM510,
+    .rom_sig = "w_dkong2",
     .dual_screen = 1,
     .main_uses_top = 1,
     .use_sm5a = 0,

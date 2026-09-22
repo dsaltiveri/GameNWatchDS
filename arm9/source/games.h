@@ -67,4 +67,16 @@ extern const game_desc_t game_ssparky;
 extern const game_desc_t *const games[];
 extern const int game_count;
 
+/* Looks up a descriptor by the file name of a .gnw, no matter the folder or the
+   device it is opened from ("sd:/roms/gnw/gnw_dkong.gnw" matches the catalog
+   entry "/gnw/gnw_dkong.gnw"), case-insensitive. NULL if it is not a known
+   .gnw. */
+const game_desc_t *games_find_by_file(const char *path);
+
+/* Looks up a descriptor by the CPU name and the 8-byte ROM signature stored in
+   the .gnw header (e.g. "SM510" + "w_dkong2"), which is how a renamed .gnw is
+   recognised. The pair (not the signature alone) tells apart the games sharing
+   a signature: Popeye, Manhole, Mario... NULL when unknown. */
+const game_desc_t *games_find_by_rom(const char *cpu_name, const char *rom_sig);
+
 #endif /* _GAMES_H_ */

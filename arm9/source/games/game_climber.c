@@ -7,6 +7,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 climber_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -27,6 +28,8 @@ static u32 climber_update_buttons(void){
 const game_desc_t game_climber = {
     .name = "Climber (Crystal Screen)",
     .rom_path = "/gnw/gnw_climber.gnw",
+    .cpu = ROM_CPU_SM511,
+    .rom_sig = "w_climbr",
     .dual_screen = 0,
     .main_uses_top = 0,
     .use_sm5a = 0,

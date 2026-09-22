@@ -9,6 +9,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 fire_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -27,6 +28,8 @@ static u32 fire_update_buttons(void){
 const game_desc_t game_fire = {
     .name = "Fire",
     .rom_path = "/gnw/gnw_fire.gnw",
+    .cpu = ROM_CPU_SM5A,
+    .rom_sig = "w_fire__",
     .dual_screen = 0,          /* single LCD screen (MAIN) */
     .main_uses_top = 0,        /* MAIN shows bottomNS; SUB stays black */
     .use_sm5a = 1,

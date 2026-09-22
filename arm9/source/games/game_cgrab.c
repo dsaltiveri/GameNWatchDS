@@ -7,6 +7,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 crab_grab_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -39,6 +40,8 @@ static const u16 cgrab_seg_floor_limits[5] = { 77, 102, 128, 154, 180 };
 const game_desc_t game_cgrab = {
     .name = "Crab Grab",
     .rom_path = "/gnw/gnw_cgrab.gnw",
+    .cpu = ROM_CPU_SM510,
+    .rom_sig = "w_cgrab_",
     .dual_screen = 0,
     .main_uses_top = 0,
     .use_sm5a = 0,

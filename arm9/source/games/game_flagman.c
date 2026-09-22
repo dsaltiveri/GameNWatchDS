@@ -7,6 +7,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 flagman_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -35,6 +36,8 @@ static u32 flagman_update_buttons(void){
 const game_desc_t game_flagman = {
     .name = "Flagman",
     .rom_path = "/gnw/gnw_flagman.gnw",
+    .cpu = ROM_CPU_SM5A,
+    .rom_sig = "w_flagma",
     .dual_screen = 0,
     .main_uses_top = 0,
     .use_sm5a = 1,

@@ -19,6 +19,12 @@ typedef struct game_desc {
     const char *name;                 /* name shown in the menu */
     const char *rom_path;             /* SD path of the .gnw (e.g. "/gnw/gnw_fire.gnw") */
 
+    /* Identity written in the .gnw header, used to recognise the file when it
+       is opened from a loader (TWiLight Menu++) and it is not in /gnw/ or has
+       been renamed. Both are fixed 8-byte strings in the header. */
+    const char *cpu;                  /* CPU name (ROM_CPU_* in gw_sys/gw_romloader.h) */
+    const char *rom_sig;              /* ROM signature (e.g. "w_dkong2") */
+
     /* Behaviour flags */
     int dual_screen;     /* 1 = two LCD screens; 0 = single (MAIN only) */
     int main_uses_top;   /* 1 = MAIN shows topNS; 0 = MAIN shows bottomNS */
@@ -41,6 +47,11 @@ extern u32 gw_buttons_state;
 /* Runs the game in an infinite loop. Returns 1 when the player presses
    L+R to go back to the main menu. */
 int emulator_run(const game_desc_t *g);
+
+/* Same as emulator_run() but reading the .gnw from an explicit path: used when
+   the loader (TWiLight Menu++, .argv files...) opens the game directly, so the
+   file may live outside /gnw/. rom_path == NULL keeps g->rom_path. */
+int emulator_run_path(const game_desc_t *g, const char *rom_path);
 
 #endif /* _EMULATOR_H_ */
 

@@ -16,9 +16,8 @@ Usage:
     python shrinker/shrink_gnw.py --only fire     # a single game
     python shrinker/shrink_gnw.py --force         # re-render segments (no cache)
 
-The CASE previews (render_preview_case and helpers) now live in
-shrinker/build_gnw_case.py; this script only handles the .gnw files and the
-backdrop+segment preview (render_preview).
+This script handles the .gnw files and the backdrop+segment preview
+(render_preview).
 """
 import hashlib
 import io
@@ -1563,9 +1562,6 @@ def render_preview(game):
     return out_path
 
 
-
-# Case preview: _carcasa_ventana, _artwork_lcd_render, _case_screen_rect
-# and render_preview_case were moved to shrinker/build_gnw_case.py.
 
 def gw_src_dir(game):
     return os.path.join(SRC_DIR, "gnw_" + game)

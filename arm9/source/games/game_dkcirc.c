@@ -7,6 +7,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 dk_circus_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -24,6 +25,8 @@ static u32 dk_circus_update_buttons(void){
 const game_desc_t game_dkcirc = {
     .name = "Donkey Kong Circus",
     .rom_path = "/gnw/gnw_dkcirc.gnw",
+    .cpu = ROM_CPU_SM511,
+    .rom_sig = "w_dkcirc",
     .dual_screen = 0,
     .main_uses_top = 0,
     .use_sm5a = 0,

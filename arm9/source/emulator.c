@@ -23,6 +23,10 @@
 
 static const game_desc_t *g_game = NULL;
 
+/* Path of the .gnw to load: the one of the catalog, or the one a loader passed
+   when the game was opened directly (see emulator_run_path()). */
+static const char *g_rom_path = NULL;
+
 /* RGB565 backgrounds of the current game, extracted from the .gnw loaded in RAM. */
 static const unsigned char *g_top_bmp = NULL;     /* topNS  -> SUB screen */
 static const unsigned char *g_bottom_bmp = NULL;  /* bottomNS -> MAIN screen */
@@ -413,7 +417,7 @@ static int emulator_init(void){
 
     /* Loads the .gnw from the SD card: it contains the program, segments,
        keyboard and the TWO RGB565 backgrounds (topNS + bottomNS). */
-    if(!gw_romloader_load_file(g_game->rom_path))
+    if(!gw_romloader_load_file(g_rom_path ? g_rom_path : g_game->rom_path))
         return 0;
     g_top_bmp = gw_rom_backdrop(0);
     g_bottom_bmp = gw_rom_backdrop(1);
@@ -488,7 +492,12 @@ static int emulator_init(void){
 
 
 int emulator_run(const game_desc_t *g){
+    return emulator_run_path(g, NULL);
+}
+
+int emulator_run_path(const game_desc_t *g, const char *rom_path){
     g_game = g;
+    g_rom_path = rom_path;
     if(!emulator_init())
         return 0;   /* ROM not found or invalid: return to menu */
 

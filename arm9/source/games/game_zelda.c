@@ -7,6 +7,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 zelda_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -27,6 +28,8 @@ static u32 zelda_update_buttons(void){
 const game_desc_t game_zelda = {
     .name = "Zelda",
     .rom_path = "/gnw/gnw_zelda.gnw",
+    .cpu = ROM_CPU_SM512,
+    .rom_sig = "w_zelda_",
     .dual_screen = 1,
     .main_uses_top = 1,
     .use_sm5a = 0,

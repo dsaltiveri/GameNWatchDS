@@ -7,6 +7,7 @@
 #include "emulator.h"
 #include "games.h"
 #include "gw_sys/gw_system.h"
+#include "gw_sys/gw_romloader.h"
 
 static u32 super_sparky_update_buttons(void){
     u32 k=keysHeld(), b=0;
@@ -37,6 +38,8 @@ static const u16 ssparky_seg_floor_limits[5] = { 33, 51, 82, 110, 192 };
 const game_desc_t game_ssparky = {
     .name = "Super Sparky",
     .rom_path = "/gnw/gnw_ssparky.gnw",
+    .cpu = ROM_CPU_SM510,
+    .rom_sig = "w_sspark",
     .dual_screen = 0,
     .main_uses_top = 0,
     .use_sm5a = 0,

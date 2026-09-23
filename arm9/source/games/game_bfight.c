@@ -26,7 +26,7 @@ static u32 balloon_fight_v1_update_buttons(void){
 }
 
 const game_desc_t game_bfight = {
-    .name = "Balloon Fight (Crystal Screen)",
+    .name = "Balloon Fight (Crystal)",
     .rom_path = "/gnw/gnw_bfight.gnw",
     .cpu = ROM_CPU_SM511,
     .rom_sig = "w_bfight",

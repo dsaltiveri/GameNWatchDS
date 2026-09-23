@@ -251,6 +251,11 @@ Homebrew Launcher) the emulator behaves exactly as before: the internal menu of
 
 ### Main menu
 
+The menu is a **plain text console** on the bottom screen (libnds
+`consoleDemoInit`, the same approach RetroFabDS uses): the top screen stays
+black, and the list shows 19 games at a time, left aligned and scrolling with
+the selection, which is highlighted in another color.
+
 | Action        | Key               |
 | ------------- | ----------------- |
 | Move cursor   | D-pad up/down     |

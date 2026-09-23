@@ -26,7 +26,7 @@ static u32 super_mario_update_buttons(void){
 }
 
 const game_desc_t game_smb = {
-    .name = "Super Mario Bros. (Crystal Screen)",
+    .name = "Super Mario Bros. (Crystal)",
     .rom_path = "/gnw/gnw_smb.gnw",
     .cpu = ROM_CPU_SM511,
     .rom_sig = "w_smb___",

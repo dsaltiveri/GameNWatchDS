@@ -2,15 +2,18 @@
  * Main menu of the emulator: game list on the bottom screen with scroll.
  * D-pad up/down to move and A to enter.
  * Inside a game, R returns to this menu.
+ *
+ * The menu is drawn with the plain text console of libnds (consoleDemoInit +
+ * printf), the same way RetroFabDS does it: no framebuffer, no custom font.
  */
 #include <nds.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
 #include <dirent.h>
 
 #include "menu.h"
-#include "menu_font.h"
 #include "games.h"
 #include "emulator.h"
 
@@ -19,73 +22,110 @@ static int g_sd_ok = 1;
 
 void menu_set_sd_ok(int ok){ g_sd_ok = ok; }
 
-/* Number of visible games per page in the bottom list. */
-#define PAGE_SIZE 11
+/* Console geometry: the libnds font is 8x8 on a 256x192 screen, so the window
+   holds 32x24 characters. The last column is never used: a row filled up to
+   column 32 wraps to the next line and would scroll the whole menu up. */
+#define MENU_TEXT_COLS   31
+#define MENU_SCREEN_ROWS 24
 
-/* Controls shown on the top screen for each game. */
-// (menu_controls removed: the top screen shows the case preview)
-#define MENU_CLR_TITLE   (0x8000 | RGB15(31, 31, 31))
-#define MENU_CLR_TEXT    (0x8000 | RGB15(28, 28, 28))
-#define MENU_CLR_DIM     (0x8000 | RGB15(18, 18, 18))
-#define MENU_CLR_SEL     (0x8000 | RGB15(31, 24, 0))
-#define MENU_CLR_BAR     (0x8000 | RGB15(9, 9, 9))
+/* Games listed at once: the list keeps the selection centered and leaves the
+   last row of the window blank (bottom margin). */
+#define MENU_LIST_ROWS   19
 
-/* Framebuffers Bmp16 256x192 (MODE_3_2D). */
-static u16 *g_top = NULL;
-static u16 *g_bot = NULL;
+/* Row (0..MENU_SCREEN_ROWS-1) where the next menu_row() writes. */
+static int g_screen_row;
 
-static void menu_clear(u16 *fb){
-    memset(fb, 0, 256 * 192 * sizeof(u16));
+/* Clears the window and puts the cursor at (0,0) so the next menu_row() writes
+   the first row again. Needed on every redraw: after a full window the cursor
+   is left on the last row. */
+static void menu_screen_reset(void){
+    printf("\x1b[2J");
+    g_screen_row = 0;
 }
 
-static void menu_line(u16 *fb, int y, u16 color){
-    for (int x = 0; x < 256; x++)
-        fb[y * 256 + x] = color;
+/* Sets up the text console on the bottom screen, like RetroFabDS:
+   consoleDemoInit() configures MODE_0_2D + VRAM_C + BG0 there. The top screen
+   is blanked because after a game it still shows the artwork of the last one. */
+static void menu_console_begin(void){
+    powerOn(POWER_ALL_2D);
+    videoSetMode(MODE_0_2D);
+    consoleDemoInit();
+
+    consoleSetColor(NULL, CONSOLE_WHITE);
+    menu_screen_reset();
 }
 
-/* Draws a 6x8 glyph (1bpp, bits packed to the left). Glyphs that would not fit
-   in the framebuffer are dropped (long paths in the notices). */
-static void menu_glyph(u16 *fb, int px, int py, unsigned char ch, u16 color){
-    if (px < 0 || px + MENU_FONT_W > 256 || py < 0 || py + MENU_FONT_H > 192)
+/* Writes one row of the window (printf style), padded to MENU_TEXT_COLS so a
+   shorter row does not leave the tail of the previous one on screen. Rows
+   beyond the window are dropped: printing them would scroll the menu up. */
+static void menu_row(const char *fmt, ...){
+    if (g_screen_row >= MENU_SCREEN_ROWS)
         return;
-    if (ch < 32 || ch > 127) ch = '?';
-    const unsigned char *g = menu_font[ch - 32];
-    for (int row = 0; row < MENU_FONT_H; row++){
-        unsigned char bits = g[row];
-        u16 *dst = fb + (py + row) * 256 + px;
-        /* The BG3 Bmp16 in MODE_5 shows flipped columns: each glyph is
-           drawn horizontally mirrored so it looks correct. */
-        for (int col = 0; col < MENU_FONT_W; col++){
-            if (bits & (0x20 >> col))
-                dst[MENU_FONT_W - 1 - col] = color;
-        }
-    }
+
+    char text[MENU_TEXT_COLS + 1];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof(text), fmt, ap);
+    va_end(ap);
+
+    if (g_screen_row > 0)
+        putchar('\n');
+    printf("%-*s", MENU_TEXT_COLS, text);
+    g_screen_row++;
 }
 
-/* Fixed-width 6px text; x is the pixel position (left column). */
-static void menu_text(u16 *fb, int px, int py, const char *s, u16 color){
+/* Row with the text centered in the window. */
+static void menu_row_center(const char *s){
+    int len = (int)strlen(s);
+    if (len > MENU_TEXT_COLS)
+        len = MENU_TEXT_COLS;
+
+    char text[MENU_TEXT_COLS + 1];
+    int pad = (MENU_TEXT_COLS - len) / 2;
+    memset(text, ' ', (size_t)pad);
+    memcpy(text + pad, s, (size_t)len);
+    text[pad + len] = '\0';
+
+    menu_row("%s", text);
+}
+
+/* Row, or rows, of a text longer than the window: broken on spaces. */
+static void menu_row_wrap(const char *s){
+    char text[MENU_TEXT_COLS + 1];
+
     while (*s){
-        if (*s == '\n'){
-            py += MENU_FONT_H;
-            px = 0;
-            s++;
-            continue;
+        size_t len = strlen(s);
+        if (len <= MENU_TEXT_COLS){
+            menu_row("%s", s);
+            return;
         }
-        menu_glyph(fb, px, py, (unsigned char)*s, color);
-        px += MENU_FONT_W;
-        s++;
+
+        int cut = MENU_TEXT_COLS;
+        while (cut > 1 && s[cut] != ' ')
+            cut--;
+        if (s[cut] != ' ')
+            cut = MENU_TEXT_COLS;   /* no space available: cut where it fits */
+
+        memcpy(text, s, (size_t)cut);
+        text[cut] = '\0';
+        menu_row("%s", text);
+
+        s += cut;
+        while (*s == ' ')
+            s++;
     }
 }
 
-/* Horizontally centered text. */
-static void menu_text_cx(u16 *fb, int py, const char *s, u16 color){
-    int w = 0;
-    for (const char *p = s; *p; p++)
-        w += MENU_FONT_W;
-    menu_text(fb, (256 - w) / 2, py, s, color);
+/* Horizontal bar used as separator. */
+static void menu_row_bar(void){
+    menu_row("%s", "------------------------------");
 }
 
-#define MENU_VISIBLE 11
+/* Empty rows up to (and not including) the given one. */
+static void menu_rows_to(int row){
+    while (g_screen_row < row)
+        menu_row("");
+}
 
 /* Indexes of games whose .gnw exists in /gnw/ (built when the menu opens). */
 static int g_visible[64];
@@ -133,18 +173,20 @@ static void menu_build_visible(void){
     }
 }
 
+/* Redraws the whole window: header and list. The names are pegged to the left
+   column, so the selected game is marked with another color instead of a
+   cursor character (that would move its text to the right). The list stops one
+   row before the bottom, which stays blank. */
 static void menu_draw(int sel){
-    /* --- top screen: unused (black) --- */
-    menu_clear(g_top);
+    menu_screen_reset();
 
-    /* --- bottom screen: retro-go style list (centered cursor) --- */
-    menu_clear(g_bot);
-    char buf[40];
-    snprintf(buf, sizeof(buf), "SELECT GAME (%d)", g_visible_count);
-    menu_text_cx(g_bot, 3, buf, MENU_CLR_TITLE);
-    menu_line(g_bot, 14, MENU_CLR_BAR);
+    consoleSetColor(NULL, CONSOLE_WHITE);
+    menu_row_center("GAME & WATCH EMULATOR DS");
+    menu_row_bar();
+    menu_row("SELECT GAME (%d)", g_visible_count);
+    menu_row("");           /* blank line between the header and the list */
 
-    int lines = MENU_VISIBLE;
+    int lines = MENU_LIST_ROWS;
     int top = sel - lines / 2;
     /* scroll clamped: up (Ball at the start) and down (last games). */
     if (top < 0) top = 0;
@@ -153,52 +195,35 @@ static void menu_draw(int sel){
     if (top > max_top) top = max_top;
     for (int i = 0; i < lines; i++){
         int entry = top + i;
-        if (entry < 0 || entry >= g_visible_count)
+        if (entry < 0 || entry >= g_visible_count){
+            consoleSetColor(NULL, CONSOLE_WHITE);
+            menu_row("");
             continue;
-        int gi = g_visible[entry];
-        int y = 20 + i * 14;
-        /* clamp to columns so the name does not overflow */
-        char name[40];
-        snprintf(name, sizeof(name), "%.*s", 34, games[gi]->name);
-
-        if (entry == sel){
-            menu_text(g_bot, 4, y, ">", MENU_CLR_SEL);
-            menu_text(g_bot, 14, y, name, MENU_CLR_SEL);
-        } else {
-            menu_text(g_bot, 4, y, name, MENU_CLR_TEXT);
         }
+        /* clamp to columns so the name does not overflow */
+        consoleSetColor(NULL, (entry == sel) ? CONSOLE_LIGHT_YELLOW : CONSOLE_WHITE);
+        menu_row("%.31s", games[g_visible[entry]]->name);
     }
 
-    /* --- footer: separator line above the project name, mirroring the header
-       (title text on top, bar below it; here bar above the footer text) --- */
-    menu_line(g_bot, 177, MENU_CLR_BAR);
-    menu_text_cx(g_bot, 181, "GAME & WATCH EMULATOR DS V0.1", MENU_CLR_TEXT);
+    consoleSetColor(NULL, CONSOLE_WHITE);
 }
 
 int menu_select(int preselect){
-    /* Bmp16 framebuffer on both screens (redone when returning from a game).
-       Same pattern as emulator_init: MODE_5_2D + bgInit + videoBgEnable. */
-    powerOn(POWER_ALL_2D);
-    videoSetMode(MODE_5_2D);
-    videoSetModeSub(MODE_5_2D);
-
-    vramSetBankA(VRAM_A_MAIN_BG);
-    vramSetBankC(VRAM_C_SUB_BG);
-
-    bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-    bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-    videoBgEnable(3);
-    videoBgEnableSub(3);
-
-    g_top = BG_GFX;
-    g_bot = BG_GFX_SUB;
+    /* Text console on the bottom screen (redone when returning from a game,
+       whose MODE_5_2D setup has both screens configured by then). */
+    menu_console_begin();
 
     /* Detect which games have a .gnw in /gnw/ and navigate over those. */
     menu_build_visible();
     if (g_visible_count == 0){
-        menu_clear(g_bot);
-        menu_text_cx(g_bot, 60, "NO GAMES", MENU_CLR_TITLE);
-        menu_text_cx(g_bot, 84, "COPY THE .GNW FILES TO /gnw/", MENU_CLR_TEXT);
+        menu_row_center("GAME & WATCH EMULATOR DS");
+        menu_row_bar();
+        menu_row("");
+        menu_row_center("NO GAMES");
+        if (g_sd_ok)
+            menu_row_center("COPY THE .GNW FILES TO /gnw/");
+        else
+            menu_row_center("SD CARD COULD NOT BE MOUNTED");
         while (1){
             swiWaitForVBlank();
             scanKeys();
@@ -265,25 +290,8 @@ int menu_select(int preselect){
 }
 
 /* ---- notices (errors and direct launch) ----
-   Both screens as Bmp16 (MODE_5_2D): emulator_run() leaves the video mode and
-   the VRAM banks configured, so they are set up again here. */
-
-static void notice_begin(void){
-    powerOn(POWER_ALL_2D);
-    videoSetMode(MODE_5_2D);
-    videoSetModeSub(MODE_5_2D);
-
-    vramSetBankA(VRAM_A_MAIN_BG);
-    vramSetBankC(VRAM_C_SUB_BG);
-
-    bgInit(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-    bgInitSub(3, BgType_Bmp16, BgSize_B16_256x256, 0, 0);
-    videoBgEnable(3);
-    videoBgEnableSub(3);
-
-    g_top = BG_GFX;
-    g_bot = BG_GFX_SUB;
-}
+   Plain text console too, like the menu: emulator_run() leaves both screens in
+   MODE_5_2D, so the console is set up again here. */
 
 /* Waits for a key (A, B or START) before returning. */
 static void notice_wait(void){
@@ -295,29 +303,33 @@ static void notice_wait(void){
     }
 }
 
-/* Path shortened to the width of the bottom screen (42 columns of 6 px),
-   keeping the end, which is the file name. */
-#define NOTICE_PATH_COLS 42
+/* Path shortened to the width of a row, keeping the end, which is the file
+   name. */
 static const char *notice_path(const char *path){
-    static char fit[NOTICE_PATH_COLS + 1];
+    static char fit[MENU_TEXT_COLS + 1];
     size_t len = strlen(path);
-    if (len <= NOTICE_PATH_COLS)
+    if (len <= MENU_TEXT_COLS)
         snprintf(fit, sizeof(fit), "%s", path);
     else
-        snprintf(fit, sizeof(fit), "...%s", path + len - (NOTICE_PATH_COLS - 3));
+        snprintf(fit, sizeof(fit), "...%s", path + len - (MENU_TEXT_COLS - 3));
     return fit;
 }
 
 void menu_show_notice(const char *title, const char *path, const char *hint,
                       const char *footer){
-    notice_begin();
+    menu_console_begin();
 
-    menu_clear(g_bot);
-    menu_text_cx(g_bot, 40, title, MENU_CLR_TITLE);
-    menu_line(g_bot, 50, MENU_CLR_BAR);
-    menu_text(g_bot, 20, 78, notice_path(path), MENU_CLR_SEL);
-    menu_text(g_bot, 20, 96, hint, MENU_CLR_TEXT);
-    menu_text_cx(g_bot, 184, footer, MENU_CLR_SEL);
+    menu_row_center(title);
+    menu_row_bar();
+    menu_row("");
+    menu_row("%s", notice_path(path));
+    menu_row_wrap(hint);
+
+    /* The footer sits at the bottom of the window, like the footer of the
+       menu list. */
+    menu_rows_to(MENU_SCREEN_ROWS - 1);
+    menu_row_center(footer);
+
     notice_wait();
 }
 

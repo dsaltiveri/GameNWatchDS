@@ -26,7 +26,7 @@ static u32 climber_update_buttons(void){
 }
 
 const game_desc_t game_climber = {
-    .name = "Climber (Crystal Screen)",
+    .name = "Climber (Crystal)",
     .rom_path = "/gnw/gnw_climber.gnw",
     .cpu = ROM_CPU_SM511,
     .rom_sig = "w_climbr",

@@ -57,6 +57,9 @@ static int boot_from_loader(int argc, char **argv){
 }
 
 int main(int argc, char **argv){
+    if (isDSiMode())
+        setCpuClock(true);
+
     /* Mounts the SD card (DLDI) so the .gnw files can be read. */
     menu_set_sd_ok(fatInitDefault());
 

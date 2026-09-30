@@ -16,18 +16,23 @@ manholeg, mmouse) are not compared: their GW label is decided by the
 front-end game_*.c.
 
 Usage:
-    python tools/_check_mame_kb.py            # vs the .gnw files in gnw/
-    python tools/_check_mame_kb.py --py       # vs the kb declared in shrink_gnw.py
+    python tools/_check_mame_kb.py
+    python tools/_check_mame_kb.py --py
+    python tools/_check_mame_kb.py --mame-source C:/src/mame/src/mame/handheld/hh_sm510.cpp
+
+The MAME source can also be set with GNWDS_MAME_SOURCE.
 """
+import argparse
+from pathlib import Path
 import re
 import struct
 import os
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GNW = os.path.join(ROOT, "shrinker", "output", "gnw")
-PY = os.path.join(ROOT, "shrinker", "shrink_gnw.py")
-MAME = r"C:\Users\dsalt\Downloads\mame\src\mame\handheld\hh_sm510.cpp"
+ROOT = Path(__file__).resolve().parents[1]
+GNW = ROOT / "shrinker" / "output" / "gnw"
+PY = ROOT / "shrinker" / "shrink_gnw.py"
+MAME_RELATIVE = Path("src/mame/handheld/hh_sm510.cpp")
 
 
 def parse_block(t, name):
@@ -57,8 +62,30 @@ def parse_block(t, name):
     return rows
 
 
-def load_mame():
-    t = open(MAME, encoding="utf-8", errors="ignore").read()
+def find_mame_source(requested=None):
+    """Resolve an explicit path, the environment, or common local clones."""
+    if requested is not None:
+        candidates = (requested,)
+    elif os.environ.get("GNWDS_MAME_SOURCE"):
+        candidates = (Path(os.environ["GNWDS_MAME_SOURCE"]),)
+    else:
+        candidates = (
+            ROOT / "tools" / "hh_sm510.cpp",
+            ROOT.parent / "mame" / MAME_RELATIVE,
+            Path("C:/mame") / MAME_RELATIVE,
+        )
+    for candidate in candidates:
+        candidate = candidate.expanduser()
+        if candidate.is_file():
+            return candidate.resolve()
+    raise FileNotFoundError(
+        "MAME hh_sm510.cpp not found; pass --mame-source PATH or set "
+        "GNWDS_MAME_SOURCE (tried: %s)" %
+        ", ".join(str(path) for path in candidates))
+
+
+def load_mame(source):
+    t = source.read_text(encoding="utf-8", errors="ignore")
 
     include_src = {}
     for m in re.finditer(
@@ -81,6 +108,9 @@ def load_mame():
             if src in blocks:
                 rows = dict(blocks[src], **rows)
         blocks[name] = rows
+    if "gnw_ball" not in blocks:
+        raise ValueError(
+            "%s does not look like MAME handheld/hh_sm510.cpp" % source)
     return blocks
 
 
@@ -150,7 +180,7 @@ def check(kb, blocks, gname, cpu):
 
 def parse_py_kb():
     """kb declared in shrink_gnw.py per game."""
-    src = open(PY, encoding="utf-8").read()
+    src = PY.read_text(encoding="utf-8")
     out = {}
     for m in re.finditer(r'^\s{4}"([a-z0-9]+)":\s*\{', src, re.M):
         g = m.group(1)
@@ -171,32 +201,63 @@ def parse_py_kb():
     return out
 
 
-def main():
-    blocks = load_mame()
-    if "--py" in sys.argv:
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Compare GameNWatchDS keyboard tables with MAME.")
+    parser.add_argument("--py", action="store_true",
+                        help="check shrink_gnw.py instead of generated .gnw files")
+    parser.add_argument("--mame-source", type=Path,
+                        help="path to MAME hh_sm510.cpp "
+                             "(env: GNWDS_MAME_SOURCE)")
+    parser.add_argument("--gnw-dir", type=Path, default=GNW,
+                        help="generated .gnw directory")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    try:
+        mame_source = find_mame_source(args.mame_source)
+    except FileNotFoundError as exc:
+        print("ERROR:", exc, file=sys.stderr)
+        return 2
+    try:
+        blocks = load_mame(mame_source)
+    except (OSError, UnicodeError, ValueError) as exc:
+        print("ERROR:", exc, file=sys.stderr)
+        return 2
+    print("MAME:", mame_source)
+    if args.py:
         print("== shrink_gnw.py vs MAME ==")
         sm5a_games = {"chef", "fire", "ball", "vermin", "helmet",
                       "octopus", "pchute", "popeye", "egg", "flagman",
                       "judge", "manholeg", "lion", "fires", "mmouse"}
+        nbad = 0
         for g, kb in parse_py_kb().items():
             if g == "fire":
                 continue  # FR-27: specific K filter (is_sm5a_keyboard in gw_system.c)
             cpu = "SM5A___" if g in sm5a_games else "SM511__"
             bad = check(kb, blocks, g, cpu)
             if bad:
+                nbad += 1
                 for slot, rn, exp, act in bad:
                     print("  !! %-9s kb[%d]=0x%08X  MAME %s=0x%08X"
                           % (g, slot, act, rn, exp))
-        print("done")
-        return
+        print("mismatches:", nbad)
+        return 1 if nbad else 0
 
     print("== .gnw files in gnw/ vs MAME ==")
+    gnw_dir = args.gnw_dir.resolve()
+    if not gnw_dir.is_dir():
+        print("ERROR: .gnw directory not found: %s" % gnw_dir,
+              file=sys.stderr)
+        return 2
     nbad = 0
-    for f in sorted(os.listdir(GNW)):
-        if not f.endswith(".gnw"):
+    for path in sorted(gnw_dir.iterdir()):
+        if path.suffix.lower() != ".gnw":
             continue
-        g = f[4:-4]
-        gw = open(os.path.join(GNW, f), "rb").read()
+        g = path.stem[4:]
+        gw = path.read_bytes()
         off = struct.unpack_from("<I", gw, 92)[0]
         sz = struct.unpack_from("<I", gw, 96)[0]
         kb = [struct.unpack_from("<I", gw, off + 4 * i)[0]
@@ -215,6 +276,7 @@ def main():
         else:
             print("     %-9s OK" % g)
     print("mismatches:", nbad)
+    return 1 if nbad else 0
 
 
 def game_cpu_sig(rom):
@@ -223,5 +285,5 @@ def game_cpu_sig(rom):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 

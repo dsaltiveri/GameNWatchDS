@@ -7,11 +7,18 @@
  * module reads that argument and normalises its device prefix; main() then boots
  * the game with no menu and gives the control back to the file browser on exit.
  */
-#include <nds.h>
-#include <fat.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+
+#ifdef LAUNCHER_HOST_TEST
+const char *fatGetDefaultDrive(void);
+FILE *launcher_host_fopen(const char *path, const char *mode);
+#define fopen launcher_host_fopen
+#else
+#include <nds.h>
+#include <fat.h>
+#endif
 
 #include "launcher.h"
 

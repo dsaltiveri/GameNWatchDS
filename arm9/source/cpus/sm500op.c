@@ -249,11 +249,17 @@ void sm500_op_ats()
 void sm500_op_exksa()
 {
 	// EXKSA: not implemented (see TODO in sm500core.c)
+#ifdef HARNESS_DEBUG
+	sm500_unimplemented_opcode_count++;
+#endif
 }
 
 void sm500_op_exkfa()
 {
 	// EXKFA: not implemented (see TODO in sm500core.c)
+#ifdef HARNESS_DEBUG
+	sm500_unimplemented_opcode_count++;
+#endif
 }
 
 

@@ -450,6 +450,10 @@ void sm510_op_clkhi()
 void sm510_op_illegal()
 {
 	printf("unknown opcode $%02X at $%04X\n", m_op, m_prev_pc);
+	#ifdef HARNESS_DEBUG
+	sm510_unknown_opcode_count++;
+	#else
 	assert(0);
+	#endif
 }
 

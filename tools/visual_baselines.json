@@ -1,0 +1,13 @@
+{
+  "games": {
+    "dkjr": {
+      "playing-a": "688c593fa8cfde9f8cfdcf1e9047fed8b9faf3238a14b927be76033cdf745a27",
+      "playing-b": "aa1918149ecefef890857649460fb533f2ac906f81b95a14ca3543e6e8868138"
+    },
+    "snoopyp": {
+      "playing-a": "2969e46a69274d2f62a7b1c75f43c5714ad97bb7e7570f90dce1a26778c656a6",
+      "playing-b": "aaebae1598da069e7484eb23e4634c867bc5fe1e7024a114b79087c6fd49e1b4"
+    }
+  },
+  "schema": 1
+}

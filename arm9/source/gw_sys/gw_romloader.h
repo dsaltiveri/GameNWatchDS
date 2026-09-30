@@ -85,7 +85,7 @@ typedef struct gwromheader_s
 extern gwromheader_t gw_head;
 
 /* Maximum size of a .gnw loaded from SD (program + geometry + keyboard
-   + 2 RGB565 backdrops). Largest is DK2: ~226 KB. */
+   + 2 RGB565 backdrops). Current packages peak around 235 KiB. */
 #define GW_ROM_MAX_SIZE (256 * 1024)
 
 /* RGB565 backdrops packed inside the .gnw (background_pixel object). */

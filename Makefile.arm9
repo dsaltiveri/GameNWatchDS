@@ -2,10 +2,16 @@
 #
 # Makefile of the ARM9 core of GameNWatchDS (Game & Watch Emulator DS) - BlocksDS.
 
-export BLOCKSDS		?= C:/msys64/opt/blocksds/core
-export BLOCKSDSEXT	?= C:/msys64/opt/blocksds/external
-
+ifeq ($(OS),Windows_NT)
 export WONDERFUL_TOOLCHAIN	?= C:/msys64/opt/wonderful
+BLOCKSDS_LEGACY_ROOT	:= C:/msys64/opt/blocksds
+else
+export WONDERFUL_TOOLCHAIN	?= /opt/wonderful
+BLOCKSDS_LEGACY_ROOT	:= /opt/blocksds
+endif
+BLOCKSDS_MODERN	:= $(WONDERFUL_TOOLCHAIN)/thirdparty/blocksds
+export BLOCKSDS		?= $(if $(wildcard $(BLOCKSDS_MODERN)/core),$(BLOCKSDS_MODERN)/core,$(BLOCKSDS_LEGACY_ROOT)/core)
+export BLOCKSDSEXT	?= $(if $(wildcard $(BLOCKSDS_MODERN)/external),$(BLOCKSDS_MODERN)/external,$(BLOCKSDS_LEGACY_ROOT)/external)
 ARM_NONE_EABI_PATH	?= $(WONDERFUL_TOOLCHAIN)/toolchain/gcc-arm-none-eabi/bin/
 
 # User config

@@ -68,7 +68,7 @@ include their melody).
 
 **Nothing is embedded in the `.nds`**: each game is a self-contained `.gnw`
 file (SM5xx program + LCD geometry + keyboard table + the TWO RGB565 backdrops)
-read from the SD card in the `/gnw/` folder. The `.nds` weighs only ~150 KB.
+read from the SD card in the `/gnw/` folder. The `.nds` weighs about 160 KiB.
 With TWiLight Menu++ the `.gnw` files can also be opened directly from its file
 browser: see [Playing `.gnw` from TWiLight Menu++](#playing-gnw-from-twilight-menu).
 
@@ -77,7 +77,6 @@ browser: see [Playing `.gnw` from TWiLight Menu++](#playing-gnw-from-twilight-me
 ```
 GameNWatchDS/
 ├── Makefile / Makefile.arm9 / Makefile.arm7   # Build with BlocksDS
-├── build_ds.py                                # Compiles, syncs the .gnw and launches melonDS
 ├── shrinker/output/gnw/                          # Generated .gnw + cache (NOT versioned)
 ├── arm7/source/main.c                         # ARM7 core (standard services)
 ├── arm9/source/
@@ -113,7 +112,10 @@ emulator and its data are generated from them with `shrinker/shrink_gnw.py`.
 Each `.gnw` is self-contained. The `background_pixel` header field stores the
 two RGB565 backdrops concatenated (`topNS` + `bottomNS`, 98304 B each).
 `gw_romloader_load_file()` reads the file, `gw_romloader_load()` validates it
-and `gw_rom_backdrop(i)` exposes the backdrops to the renderer.
+and `gw_rom_backdrop(i)` exposes the backdrops to the renderer. Validation
+includes exact core/geometry sizes, non-overlapping blocks, all 256 segment
+rectangles and their packed-pixel ranges. Historical nine-row keyboard tables
+are accepted and safely zero-extended internally to ten rows.
 
 ### Common code (unified)
 
@@ -143,6 +145,13 @@ Requirements: [BlocksDS](https://blocksds.skylyrac.net/) (with the
 `arm-none-eabi` GCC toolchain from [Wonderful](https://wonderful.asie.pl/),
 MSYS2), Python with Pillow and **Inkscape** (to render the segment SVGs).
 
+Install the Python dependencies used by the `.gnw` generator and headless
+tests with:
+
+```powershell
+py -3 -m pip install -r requirements-dev.txt
+```
+
 ```bash
 # 1) Generate the self-contained .gnw files from the shrinker/input/artwork/ and shrinker/input/roms/ ZIPs
 python shrinker/shrink_gnw.py              # all games (the 1st build renders with
@@ -150,18 +159,19 @@ python shrinker/shrink_gnw.py              # all games (the 1st build renders wi
 python shrinker/shrink_gnw.py --only fire  # a single game
 python shrinker/shrink_gnw.py --force      # re-render segments (no cache)
 
-# 2) Compile the .nds (~150 KB, no embedded ROMs)
-make                     # generates GameNWatchDS.nds
-make COMPDB=1            # also generates compile_commands.json (clangd)
-python build_ds.py       # incremental build, syncs assets and opens melonDS
-python build_ds.py --rebuild --no-launch  # clean rebuild without opening melonDS
-python build_ds.py --sync-only             # only refresh the virtual SD
+# 2) Compile the .nds (~160 KiB, no embedded ROMs)
+make           # incremental build
+make rebuild   # clean build
+make compdb    # clean build plus compile_commands.json
+make clean     # remove build artifacts
 ```
 
-`build_ds.py` is an optional Windows/melonDS development helper; the Makefiles
-remain the canonical build interface. Use `--help` for all options. The paths
-to `make`, melonDS and its virtual SD can be changed with command-line options
-or the `GNWDS_MAKE`, `GNWDS_MELONDS` and `GNWDS_SD_DIR` environment variables.
+The Makefiles are the only build interface. They prefer the current BlocksDS
+installation bundled under Wonderful and fall back to the historical
+`C:/msys64/opt/blocksds` tree. Explicit `BLOCKSDS`, `BLOCKSDSEXT` and
+`WONDERFUL_TOOLCHAIN` environment values always win. On Linux they use the
+standard `/opt/wonderful` and `/opt/blocksds` locations, which is also the
+configuration exercised by the GitHub Actions build.
 
 The `.gnw` files are generated in `shrinker/output/gnw/` (segment cache in
 `shrinker/build/`; that folder is not versioned). The menu auto-scans
@@ -171,8 +181,66 @@ in the list.
 
 > **melonDS** (PC testing only): enable the SD card in its settings
 > (Config → Firmware Settings → SD card) pointing to `C:\melonDS\SD`.
-> `build_ds.py` copies the regenerated `.gnw` there automatically so that
+> Copy the regenerated `.gnw` files to its `/gnw/` directory so that
 > `fopen("/gnw/...")` finds them.
+
+## Automated tests
+
+There are two complementary test levels. **BlocksDS Testing is the official
+acceptance suite**: it boots the built ROM in melonDS DS/libretro, discovers
+the same 56-game catalog from `arm9/source/games/game_*.c`, drives every game,
+checks video and audio, and verifies the return to the menu. The core harness
+is a faster internal diagnostic for the ROM loader and SM5xx execution; it does
+not replace the integrated acceptance suite.
+
+```bash
+# Internal core diagnostics (one game or the complete catalog)
+py -3 tools/run_core_tests.py --game all
+py -3 tools/run_core_tests.py --game dkjr
+
+# Direct-launch argv, sd:/fat: fallback and header identification
+py -3 tools/run_launcher_tests.py
+
+# Compare generated keyboard tables with a local MAME source checkout
+py -3 tools/_check_mame_kb.py --mame-source C:/src/mame/src/mame/handheld/hh_sm510.cpp
+
+# Official integrated acceptance in melonDS DS
+py -3 tools/run_headless_tests.py --game all --no-screenshots
+py -3 tools/run_headless_tests.py --game dkjr
+```
+
+The integrated runner needs the BlocksDS Testing Windows adapter and melonDS DS
+libretro core under `C:\msys64\home\<user>`, plus local BIOS, firmware and NAND
+files in `C:\melonDS\Bios`. Use `--blocksds-testing`, `--blobs` and
+`--bios-dir` to override those locations. It creates temporary hard links with
+the filenames expected by BlocksDS Testing; it neither duplicates nor modifies
+the source BIOS/NAND files. It also tests a temporary NTR-header copy of the
+ROM, including a corrected header CRC, and verifies that `GameNWatchDS.nds`
+itself remains unchanged.
+
+Results are written to `build/core-tests/summary.json` and
+`build/melonds-headless/summary.json`; the direct-launch host result is in
+`build/launcher-tests/summary.json`. Unless `--no-screenshots` is used, the
+integrated suite also saves the selection, two gameplay states and the returned
+menu for every tested game. Every captured state gets an exact RGB SHA-256
+fingerprint. The two representative games in `tools/visual_baselines.json`
+(`dkjr` and `snoopyp`) are checked on every relevant run; regenerate an entry
+only after intentionally approving a visual change with
+`--game <slug> --update-visual-baseline`.
+
+These checks cover the PC host core and melonDS DS respectively; DSi mode and
+physical Nintendo DS/DSi hardware remain separate validation targets. The core
+suite reports guessed SM511 opcode use, and fails on unknown opcodes or on the
+currently unimplemented SM500 `EXKSA`/`EXKFA` instructions. It also mutates
+package metadata in temporary copies and requires the real loader to reject
+truncated headers, unsupported CPUs, invalid sizes, bad alignment, out-of-range
+blocks, overlaps and invalid segment pixels. The direct-launch harness covers
+libnds/TWiLight-style argv selection, `sd:`/`fat:` fallback and renamed-package
+header identification; the actual handoff from TWiLight Menu++ must still be
+confirmed on hardware. `_check_mame_kb.py` also accepts the
+`GNWDS_MAME_SOURCE` environment variable when `--mame-source` is omitted.
+An unversioned `tools/hh_sm510.cpp` is detected automatically as the first
+local source option.
 
 ## Usage on a flashcart (real Nintendo DS)
 
@@ -195,8 +263,7 @@ gnw/
   on the SD.
 
 They are generated with `shrinker/shrink_gnw.py` and copied to `/gnw/` on the
-SD, just like `build_ds.py` does with the melonDS virtual SD. It is the same
-structure, so any DLDI flashcart runs the same `.nds`.
+SD. It is the same structure, so any DLDI flashcart runs the same `.nds`.
 
 ## Playing `.gnw` from TWiLight Menu++
 
@@ -241,6 +308,15 @@ emulator and whose second line is the ROM:
 Without a file argument (launched from a flashcard menu or from TWiLight Menu++
 Homebrew Launcher) the emulator behaves exactly as before: the internal menu of
 `/gnw/` is shown and **R** returns to it.
+
+Before a release, perform the hardware-only acceptance pass that automated PC
+tests cannot replace:
+
+- DS/DS Lite with a DLDI flashcart: catalog boot, one game, audio and return.
+- DSi/3DS in DS mode: the same catalog flow from `fat:`.
+- DSi/3DS in DSi mode: boot from `sd:` and confirm the configured CPU boost.
+- TWiLight Menu++: launch a normal and a renamed `.gnw` directly, then return
+  with **R**.
 
 > On a DSi/3DS the emulator runs in DSi mode and the SD card is `sd:`; on a DS
 > flashcard it is `fat:`. The argument is resolved against both, so both cases
@@ -298,12 +374,6 @@ The most common control schemes:
   the G&W has 4 corner buttons. They map to the D-pad: ↑/↓ fire the left
   corners and X/B the right ones, according to the MAME `INPUT_PORTS`.
 - **Lifeboat**: only LEFT/RIGHT (A or D-pad-right → RIGHT, Y or D-pad-left → LEFT).
-
-## Editor: clangd (VS Code)
-
-The project uses [clangd](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd)
-(configuration in `.clangd` and `.vscode/settings.json`). Compile at least once
-with `make COMPDB=1` so that `compile_commands.json` exists.
 
 ## Regenerating the per-game data
 

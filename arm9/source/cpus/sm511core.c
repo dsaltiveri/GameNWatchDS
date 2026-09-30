@@ -162,7 +162,11 @@ void sm511_execute_one()
 			switch (m_op)
 			{
 		case 0x00: sm510_op_rot(); break;
-		case 0x01: sm510_op_dta(); break;
+		case 0x01:
+#ifdef HARNESS_DEBUG
+			sm511_guessed_opcode_count++;
+#endif
+			sm510_op_dta(); break;
 		case 0x02: sm510_op_sbm(); break;
 		case 0x03: sm510_op_atpl(); break;
 		case 0x08: sm510_op_add(); break;
@@ -179,7 +183,11 @@ void sm511_execute_one()
 		case 0x5a: sm510_op_ta0(); break;
 		case 0x5b: sm510_op_tabl(); break;
 		case 0x5c: sm510_op_atx(); break;
-		case 0x5d: sm510_op_cend(); break;
+		case 0x5d:
+#ifdef HARNESS_DEBUG
+			sm511_guessed_opcode_count++;
+#endif
+			sm510_op_cend(); break;
 		case 0x5e: sm510_op_tal(); break;
 		case 0x5f: sm510_op_lbl(); break;
 
@@ -187,7 +195,11 @@ void sm511_execute_one()
 		case 0x62: sm510_op_wr(); break;
 		case 0x63: sm510_op_ws(); break;
 		case 0x64: sm510_op_incb(); break;
-		case 0x65: sm510_op_dr(); break;
+		case 0x65:
+#ifdef HARNESS_DEBUG
+			sm511_guessed_opcode_count++;
+#endif
+			sm510_op_dr(); break;
 		case 0x66: sm510_op_rc(); break;
 		case 0x67: sm510_op_sc(); break;
 		case 0x6c: sm510_op_decb(); break;
@@ -206,8 +218,16 @@ void sm511_execute_one()
 		case 0x33: sm510_op_atfc(); break;
 		case 0x34: sm510_op_bdc(); break;
 		case 0x35: sm510_op_atbp(); break;
-		case 0x36: sm510_op_clkhi(); break;
-		case 0x37: sm510_op_clklo(); break;
+		case 0x36:
+#ifdef HARNESS_DEBUG
+			sm511_guessed_opcode_count++;
+#endif
+			sm510_op_clkhi(); break;
+		case 0x37:
+#ifdef HARNESS_DEBUG
+			sm511_guessed_opcode_count++;
+#endif
+			sm510_op_clklo(); break;
 
 		default: sm510_op_illegal(); break;
 			}

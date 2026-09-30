@@ -1,0 +1,19 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  blocksds:
+    runs-on: ubuntu-latest
+    container: skylyrac/blocksds:slim-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ROM
+        run: make rebuild
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GameNWatchDS
+          path: GameNWatchDS.nds

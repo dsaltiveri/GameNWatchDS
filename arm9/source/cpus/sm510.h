@@ -195,4 +195,11 @@ void sm510_op_clklo();
 void sm510_op_clkhi();
 void sm510_op_illegal();
 
+#ifdef HARNESS_DEBUG
+/* PC harness diagnostic only; absent from production builds. */
+extern unsigned long sm510_unknown_opcode_count;
+extern unsigned long sm500_unimplemented_opcode_count;
+extern unsigned long sm511_guessed_opcode_count;
+#endif
+
 #endif // _SM510_H_

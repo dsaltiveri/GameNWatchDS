@@ -1,39 +1,32 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "Build (make COMPDB=1)",
-            "type": "shell",
-            "command": "C:/msys64/usr/bin/make.exe",
-            "args": ["COMPDB=1"],
-            "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "BLOCKSDS": "C:/msys64/opt/blocksds/core",
-                    "BLOCKSDSEXT": "C:/msys64/opt/blocksds/external",
-                    "WONDERFUL_TOOLCHAIN": "C:/msys64/opt/wonderful",
-                    "PATH": "C:/msys64/usr/bin;C:/msys64/opt/wonderful/toolchain/gcc-arm-none-eabi/bin;C:/msys64/opt/wonderful/bin;${env:PATH}"
-                }
-            },
-            "group": { "kind": "build", "isDefault": true },
-            "problemMatcher": []
-        },
-        {
-            "label": "Clean",
-            "type": "shell",
-            "command": "C:/msys64/usr/bin/make.exe",
-            "args": ["clean"],
-            "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "BLOCKSDS": "C:/msys64/opt/blocksds/core",
-                    "BLOCKSDSEXT": "C:/msys64/opt/blocksds/external",
-                    "WONDERFUL_TOOLCHAIN": "C:/msys64/opt/wonderful",
-                    "PATH": "C:/msys64/usr/bin;C:/msys64/opt/wonderful/toolchain/gcc-arm-none-eabi/bin;C:/msys64/opt/wonderful/bin;${env:PATH}"
-                }
-            },
-            "group": "build",
-            "problemMatcher": []
-        }
-    ]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "GameNWatchDS: compilar ROM limpia",
+      "type": "process",
+      "command": "C:\\msys64\\usr\\bin\\make.exe",
+      "args": ["rebuild"],
+      "options": {"cwd": "${workspaceFolder}"},
+      "group": {"kind": "build", "isDefault": true},
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "GameNWatchDS: diagnóstico del núcleo",
+      "type": "process",
+      "command": "py",
+      "args": ["-3", "tools/run_core_tests.py", "--game", "all"],
+      "dependsOn": "GameNWatchDS: compilar ROM limpia",
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    },
+    {
+      "label": "GameNWatchDS: aceptación melonDS DS",
+      "type": "process",
+      "command": "py",
+      "args": ["-3", "tools/run_headless_tests.py", "--game", "all", "--no-screenshots"],
+      "dependsOn": "GameNWatchDS: compilar ROM limpia",
+      "options": {"cwd": "${workspaceFolder}"},
+      "problemMatcher": []
+    }
+  ]
 }

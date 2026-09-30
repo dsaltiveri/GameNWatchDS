@@ -17,9 +17,22 @@
 #include "gw_system.h"
 #include "gw_romloader.h"
 
-/* Load buffer: the largest .gnw (dkong2) takes ~226 KB with the backdrops. */
+/* Load buffer: current packages peak around 235 KiB; keep some headroom. */
 static unsigned char gw_rom_buffer[GW_ROM_MAX_SIZE];
 static unsigned int loaded_rom_size = 0;
+
+#define GW_SEGMENT_COUNT 256U
+#define GW_KEYBOARD_MIN_ENTRIES 9U
+#define GW_KEYBOARD_MAX_ENTRIES 10U
+#define GW_PROGRAM_SIZE 4096U
+#define GW_MELODY_SIZE 256U
+#define GW_LCD_WIDTH 256U
+#define GW_LCD_HEIGHT_MAX 384U
+
+/* Some historical packages contain nine keyboard rows while the system layer
+   exposes a tenth (B) row. Copy into a fixed, zero-filled table so both valid
+   package variants are safe without changing the .gnw format. */
+static unsigned int gw_keyboard_storage[GW_KEYBOARD_MAX_ENTRIES];
 
 unsigned char *gw_segments = NULL;
 unsigned short *gw_segments_x = NULL;
@@ -59,6 +72,133 @@ static bool block_ok(const char *name, unsigned int offset, unsigned int size,
    return true;
 }
 
+typedef struct gw_block_s
+{
+   const char *name;
+   unsigned int offset;
+   unsigned int size;
+} gw_block_t;
+
+static bool blocks_do_not_overlap(const gw_block_t *blocks, unsigned int count)
+{
+   for (unsigned int i = 0; i < count; i++)
+   {
+      if (blocks[i].size == 0)
+         continue;
+      if (blocks[i].offset < sizeof(gw_head))
+      {
+         printf("GW block overlaps header: %s\n", blocks[i].name);
+         return false;
+      }
+      for (unsigned int j = i + 1; j < count; j++)
+      {
+         if (blocks[j].size == 0)
+            continue;
+         unsigned int i_end = blocks[i].offset + blocks[i].size;
+         unsigned int j_end = blocks[j].offset + blocks[j].size;
+         if (blocks[i].offset < j_end && blocks[j].offset < i_end)
+         {
+            printf("GW blocks overlap: %s and %s\n",
+                   blocks[i].name, blocks[j].name);
+            return false;
+         }
+      }
+   }
+   return true;
+}
+
+static bool exact_format_sizes(void)
+{
+   if (strncmp(gw_head.cpu_name, ROM_CPU_SM500, 5) != 0 &&
+       strncmp(gw_head.cpu_name, ROM_CPU_SM5A, 5) != 0 &&
+       strncmp(gw_head.cpu_name, ROM_CPU_SM510, 5) != 0 &&
+       strncmp(gw_head.cpu_name, ROM_CPU_SM511, 5) != 0 &&
+       strncmp(gw_head.cpu_name, ROM_CPU_SM512, 5) != 0)
+   {
+      printf("GW unsupported CPU: %.8s\n", gw_head.cpu_name);
+      return false;
+   }
+   if (gw_head.segments_offset_size != GW_SEGMENT_COUNT * sizeof(unsigned int) ||
+       gw_head.segments_x_size != GW_SEGMENT_COUNT * sizeof(unsigned short) ||
+       gw_head.segments_y_size != GW_SEGMENT_COUNT * sizeof(unsigned short) ||
+       gw_head.segments_width_size != GW_SEGMENT_COUNT * sizeof(unsigned short) ||
+       gw_head.segments_height_size != GW_SEGMENT_COUNT * sizeof(unsigned short))
+   {
+      printf("GW invalid geometry array sizes\n");
+      return false;
+   }
+   if (gw_head.program_size != GW_PROGRAM_SIZE)
+   {
+      printf("GW invalid program size: %u\n", gw_head.program_size);
+      return false;
+   }
+   if (gw_head.keyboard_size != GW_KEYBOARD_MIN_ENTRIES * sizeof(unsigned int) &&
+       gw_head.keyboard_size != GW_KEYBOARD_MAX_ENTRIES * sizeof(unsigned int))
+   {
+      printf("GW invalid keyboard size: %u\n", gw_head.keyboard_size);
+      return false;
+   }
+   if (gw_head.melody_size != 0 && gw_head.melody_size != GW_MELODY_SIZE)
+   {
+      printf("GW invalid melody size: %u\n", gw_head.melody_size);
+      return false;
+   }
+   if (gw_head.background_pixel_size != GW_BACKDROP_SIZE * GW_BACKDROPS)
+   {
+      printf("GW invalid backdrop size: %u\n", gw_head.background_pixel_size);
+      return false;
+   }
+   return true;
+}
+
+static bool geometry_ok(const unsigned char *rom)
+{
+   const unsigned int *offsets =
+      (const unsigned int *)&rom[gw_head.segments_offset];
+   const unsigned short *xs =
+      (const unsigned short *)&rom[gw_head.segments_x];
+   const unsigned short *ys =
+      (const unsigned short *)&rom[gw_head.segments_y];
+   const unsigned short *widths =
+      (const unsigned short *)&rom[gw_head.segments_width];
+   const unsigned short *heights =
+      (const unsigned short *)&rom[gw_head.segments_height];
+   unsigned int pixel_nibbles = gw_head.segments_pixel_size * 2U;
+
+   for (unsigned int segment = 0; segment < GW_SEGMENT_COUNT; segment++)
+   {
+      unsigned int width = widths[segment];
+      unsigned int height = heights[segment];
+      unsigned int offset = offsets[segment];
+
+      if (width == 0 && height == 0)
+      {
+         if (offset != 0 || xs[segment] != 0 || ys[segment] != 0)
+         {
+            printf("GW invalid empty segment: %u\n", segment);
+            return false;
+         }
+         continue;
+      }
+      if (width == 0 || height == 0 ||
+          width > GW_LCD_WIDTH || height > GW_LCD_HEIGHT_MAX ||
+          xs[segment] > GW_LCD_WIDTH - width ||
+          ys[segment] > GW_LCD_HEIGHT_MAX - height)
+      {
+         printf("GW invalid segment geometry: %u\n", segment);
+         return false;
+      }
+
+      unsigned int area = width * height;
+      if (offset > pixel_nibbles || area > pixel_nibbles - offset)
+      {
+         printf("GW segment pixels out of range: %u\n", segment);
+         return false;
+      }
+   }
+   return true;
+}
+
 bool gw_romloader_load(const unsigned char *rom, unsigned int rom_size)
 {
    /* Stale pointers from a previously loaded game must not survive: in
@@ -74,6 +214,7 @@ bool gw_romloader_load(const unsigned char *rom, unsigned int rom_size)
    gw_program = NULL;
    gw_melody = NULL;
    gw_keyboard = NULL;
+   memset(gw_keyboard_storage, 0, sizeof(gw_keyboard_storage));
 
    if (!rom || rom_size < sizeof(gw_head))
    {
@@ -84,6 +225,9 @@ bool gw_romloader_load(const unsigned char *rom, unsigned int rom_size)
 
    /* Read the ROM header. */
    memcpy(&gw_head, rom, sizeof(gw_head));
+
+   if (!exact_format_sizes())
+      return false;
 
    /* Validate EVERY block of the header: offset+size must stay inside the
       buffer (a corrupt .gnw must fail to load, not read out of bounds), and
@@ -100,8 +244,25 @@ bool gw_romloader_load(const unsigned char *rom, unsigned int rom_size)
    if (gw_head.melody_size != 0 &&
        !block_ok("melody", gw_head.melody, gw_head.melody_size, rom_size, 1))
       return false;
-   if (gw_head.background_pixel_size != 0 &&
-       !block_ok("background_pixel", gw_head.background_pixel, gw_head.background_pixel_size, rom_size, 1))
+   if (!block_ok("background_pixel", gw_head.background_pixel,
+                 gw_head.background_pixel_size, rom_size, 2))
+      return false;
+
+   const gw_block_t blocks[] = {
+      {"segments_pixel", gw_head.segments_pixel, gw_head.segments_pixel_size},
+      {"segments_offset", gw_head.segments_offset, gw_head.segments_offset_size},
+      {"segments_x", gw_head.segments_x, gw_head.segments_x_size},
+      {"segments_y", gw_head.segments_y, gw_head.segments_y_size},
+      {"segments_width", gw_head.segments_width, gw_head.segments_width_size},
+      {"segments_height", gw_head.segments_height, gw_head.segments_height_size},
+      {"melody", gw_head.melody, gw_head.melody_size},
+      {"program", gw_head.program, gw_head.program_size},
+      {"keyboard", gw_head.keyboard, gw_head.keyboard_size},
+      {"background_pixel", gw_head.background_pixel,
+       gw_head.background_pixel_size},
+   };
+   if (!blocks_do_not_overlap(blocks, sizeof(blocks) / sizeof(blocks[0])) ||
+       !geometry_ok(rom))
       return false;
 
    /* Preserve the format invariant that the final block ends exactly at EOF.
@@ -127,8 +288,10 @@ bool gw_romloader_load(const unsigned char *rom, unsigned int rom_size)
    if (gw_head.melody_size != 0)
       gw_melody = (unsigned char *)&rom[gw_head.melody];
 
-   /* Direct pointer to the keyboard table (read-only, like the rest). */
-   gw_keyboard = (unsigned int *)&rom[gw_head.keyboard];
+   /* Normalize legacy nine-row tables to the ten safe rows consumed by the
+      system layer. The source package and its on-disk format remain unchanged. */
+   memcpy(gw_keyboard_storage, &rom[gw_head.keyboard], gw_head.keyboard_size);
+   gw_keyboard = gw_keyboard_storage;
 
    printf("ROM loaded: %u bytes\n", rom_size);
    loaded_rom_size = rom_size;

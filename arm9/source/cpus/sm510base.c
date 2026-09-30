@@ -85,6 +85,13 @@ u8 m_cb;
 u8 m_s;
 bool m_rsub;
 
+#ifdef HARNESS_DEBUG
+/* Kept out of the DS binary; lets the host harness report illegal opcodes. */
+unsigned long sm510_unknown_opcode_count = 0;
+unsigned long sm500_unimplemented_opcode_count = 0;
+unsigned long sm511_guessed_opcode_count = 0;
+#endif
+
 void update_w_latch() { m_write_s(m_w); } // W is connected directly to S
 
 //-------------------------------------------------

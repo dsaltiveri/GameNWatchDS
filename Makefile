@@ -5,9 +5,25 @@
 # and the ARM7 core (standard sound/system services) and packs the NDS ROM
 # with ndstool.
 
-BLOCKSDS	?= C:/msys64/opt/blocksds/core
-BLOCKSDSEXT	?= C:/msys64/opt/blocksds/external
+ifeq ($(OS),Windows_NT)
 WONDERFUL_TOOLCHAIN	?= C:/msys64/opt/wonderful
+BLOCKSDS_LEGACY_ROOT	:= C:/msys64/opt/blocksds
+WONDERFUL_TOOLCHAIN_POSIX := $(shell /usr/bin/cygpath -u "$(WONDERFUL_TOOLCHAIN)")
+else
+WONDERFUL_TOOLCHAIN	?= /opt/wonderful
+BLOCKSDS_LEGACY_ROOT	:= /opt/blocksds
+WONDERFUL_TOOLCHAIN_POSIX := $(WONDERFUL_TOOLCHAIN)
+endif
+MSYS2_USR_BIN	?= /usr/bin
+export PATH := $(MSYS2_USR_BIN):$(WONDERFUL_TOOLCHAIN_POSIX)/toolchain/gcc-arm-none-eabi/bin:$(WONDERFUL_TOOLCHAIN_POSIX)/bin:$(PATH)
+
+# Prefer the current BlocksDS bundled by Wonderful; retain the historical
+# standalone installation as a fallback. Explicit environment values win.
+BLOCKSDS_MODERN	:= $(WONDERFUL_TOOLCHAIN)/thirdparty/blocksds
+BLOCKSDS_DEFAULT	:= $(if $(wildcard $(BLOCKSDS_MODERN)/core),$(BLOCKSDS_MODERN)/core,$(BLOCKSDS_LEGACY_ROOT)/core)
+BLOCKSDSEXT_DEFAULT	:= $(if $(wildcard $(BLOCKSDS_MODERN)/external),$(BLOCKSDS_MODERN)/external,$(BLOCKSDS_LEGACY_ROOT)/external)
+BLOCKSDS	?= $(BLOCKSDS_DEFAULT)
+BLOCKSDSEXT	?= $(BLOCKSDSEXT_DEFAULT)
 
 # User config
 # -----------
@@ -19,14 +35,12 @@ GAME_SUBTITLE	:= G&W collection
 GAME_AUTHOR	:= dsaltiveri
 GAME_ICON	:= icon.gif
 
-# A compile_commands.json file is created if this is set to 1
-# (needed by clangd). Set COMPDB=0 to disable it.
-COMPDB		?= 1
+# Set to 1 only when an editor needs compile_commands.json.
+COMPDB		?= 0
 
 # Tools
 # -----
 
-MAKE		:= make
 RM		:= rm -rf
 
 # Verbose flag
@@ -46,9 +60,17 @@ ROM		:= $(NAME).nds
 # Targets
 # -------
 
-.PHONY: all clean arm9 arm7 compdb
+.PHONY: all clean rebuild compdb arm9 arm7
 
 all: $(ROM)
+
+rebuild:
+	$(V)+$(MAKE) clean --no-print-directory
+	$(V)+$(MAKE) all COMPDB=0 --no-print-directory
+
+compdb:
+	$(V)+$(MAKE) clean --no-print-directory
+	$(V)+$(MAKE) all COMPDB=1 --no-print-directory
 
 clean:
 	@echo "  CLEAN"

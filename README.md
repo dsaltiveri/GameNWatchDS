@@ -184,64 +184,6 @@ in the list.
 > Copy the regenerated `.gnw` files to its `/gnw/` directory so that
 > `fopen("/gnw/...")` finds them.
 
-## Automated tests
-
-There are two complementary test levels. **BlocksDS Testing is the official
-acceptance suite**: it boots the built ROM in melonDS DS/libretro, discovers
-the same 56-game catalog from `arm9/source/games/game_*.c`, drives every game,
-checks video and audio, and verifies the return to the menu. The core harness
-is a faster internal diagnostic for the ROM loader and SM5xx execution; it does
-not replace the integrated acceptance suite.
-
-```bash
-# Internal core diagnostics (one game or the complete catalog)
-py -3 tools/run_core_tests.py --game all
-py -3 tools/run_core_tests.py --game dkjr
-
-# Direct-launch argv, sd:/fat: fallback and header identification
-py -3 tools/run_launcher_tests.py
-
-# Compare generated keyboard tables with a local MAME source checkout
-py -3 tools/_check_mame_kb.py --mame-source C:/src/mame/src/mame/handheld/hh_sm510.cpp
-
-# Official integrated acceptance in melonDS DS
-py -3 tools/run_headless_tests.py --game all --no-screenshots
-py -3 tools/run_headless_tests.py --game dkjr
-```
-
-The integrated runner needs the BlocksDS Testing Windows adapter and melonDS DS
-libretro core under `C:\msys64\home\<user>`, plus local BIOS, firmware and NAND
-files in `C:\melonDS\Bios`. Use `--blocksds-testing`, `--blobs` and
-`--bios-dir` to override those locations. It creates temporary hard links with
-the filenames expected by BlocksDS Testing; it neither duplicates nor modifies
-the source BIOS/NAND files. It also tests a temporary NTR-header copy of the
-ROM, including a corrected header CRC, and verifies that `GameNWatchDS.nds`
-itself remains unchanged.
-
-Results are written to `build/core-tests/summary.json` and
-`build/melonds-headless/summary.json`; the direct-launch host result is in
-`build/launcher-tests/summary.json`. Unless `--no-screenshots` is used, the
-integrated suite also saves the selection, two gameplay states and the returned
-menu for every tested game. Every captured state gets an exact RGB SHA-256
-fingerprint. The two representative games in `tools/visual_baselines.json`
-(`dkjr` and `snoopyp`) are checked on every relevant run; regenerate an entry
-only after intentionally approving a visual change with
-`--game <slug> --update-visual-baseline`.
-
-These checks cover the PC host core and melonDS DS respectively; DSi mode and
-physical Nintendo DS/DSi hardware remain separate validation targets. The core
-suite reports guessed SM511 opcode use, and fails on unknown opcodes or on the
-currently unimplemented SM500 `EXKSA`/`EXKFA` instructions. It also mutates
-package metadata in temporary copies and requires the real loader to reject
-truncated headers, unsupported CPUs, invalid sizes, bad alignment, out-of-range
-blocks, overlaps and invalid segment pixels. The direct-launch harness covers
-libnds/TWiLight-style argv selection, `sd:`/`fat:` fallback and renamed-package
-header identification; the actual handoff from TWiLight Menu++ must still be
-confirmed on hardware. `_check_mame_kb.py` also accepts the
-`GNWDS_MAME_SOURCE` environment variable when `--mame-source` is omitted.
-An unversioned `tools/hh_sm510.cpp` is detected automatically as the first
-local source option.
-
 ## Usage on a flashcart (real Nintendo DS)
 
 The emulator is a standard libnds homebrew and runs on any flashcart that

@@ -17,3 +17,11 @@ jobs:
         with:
           name: GameNWatchDS
           path: GameNWatchDS.nds
+
+
+  regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test renderer, audio and launcher without game ROMs
+        run: python3 tools/run_regression_tests.py --sanitize

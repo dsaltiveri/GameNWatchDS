@@ -46,9 +46,9 @@ static s16 audio_pcm[AUDIO_SAMPLES] __attribute__((aligned(4)));
 static s16 audio_loop[AUDIO_LOOP_LEN] __attribute__((aligned(4)));
 
 typedef struct {
-    u8  pixel_seg[FBH][FBW];      /* pixel -> segment (0xFF = empty) */
+    u16 pixel_seg[FBH][FBW];      /* pixel -> segment (0xFFFF = empty) */
     u8  pixel_int[FBH][FBW];      /* 4-bit intensity of the pixel (0-15) */
-    u8  pixel_seg2[FBH][FBW];     /* 2nd segment claiming the pixel (0xFF = empty) */
+    u16 pixel_seg2[FBH][FBW];     /* 2nd segment claiming the pixel (0xFFFF = empty) */
     u8  pixel_int2[FBH][FBW];     /* its 4-bit intensity */
     u8  tile_dirty[TILES_N];
     u8  seg_tiles[256][TILES_N];  /* segment -> tiles it touches (0xFF = end) */
@@ -159,7 +159,7 @@ static void audio_synth_frame(void)
         a1 = -32501; a2 = 14116;
     }
 
-    for(int i=0;i<AUDIO_SAMPLES;i++){
+    for(unsigned int i=0;i<AUDIO_SAMPLES;i++){
         int x = audio_levels[gw_audio_buffer[i] & 3];
 
         /* --- biquad low-pass ---
@@ -224,13 +224,13 @@ static void init_screen(screen_t *s){
 static int pixel_active_intensity(const screen_t *s, int x, int y,
                                   const unsigned char *seg_on, bool inverted){
     int intensity = -1;
-    u8 seg = s->pixel_seg[y][x];
-    u8 seg2 = s->pixel_seg2[y][x];
+    u16 seg = s->pixel_seg[y][x];
+    u16 seg2 = s->pixel_seg2[y][x];
 
-    if(seg != 0xFF && seg_on[seg])
+    if(seg != 0xFFFF && seg_on[seg])
         intensity = s->pixel_int[y][x];
 
-    if(seg2 != 0xFF && seg_on[seg2]){
+    if(seg2 != 0xFFFF && seg_on[seg2]){
         int second = s->pixel_int2[y][x];
         if(intensity < 0 || (inverted ? second > intensity : second < intensity))
             intensity = second;
@@ -465,9 +465,16 @@ static int emulator_init(void){
        starts silent (the buffer still holds the previous game's audio until
        the loop overwrites it). */
     memset(audio_loop, 0, sizeof(audio_loop));
-    audio_frame_pos = 0;
+    memset(audio_pcm, 0, sizeof(audio_pcm));
+    audio_frame_pos = AUDIO_SAMPLES;
     audio_cycle_accum = 0;
     audio_loop_idx = AUDIO_START_LEAD_FRAMES * AUDIO_SAMPLES;
+
+    /* Finish setup before starting playback so map construction cannot consume
+       the initial producer lead. Publish the silent ring to the sound hardware. */
+    if(g_game->init_screens) g_game->init_screens();
+    build_maps();
+    DC_FlushRange(audio_loop, sizeof(audio_loop));
 
     /* Starts continuous playback ONCE with loop=true
        over the whole circular buffer. */
@@ -484,8 +491,6 @@ static int emulator_init(void){
     TIMER1_CR = TIMER_ENABLE | TIMER_CASCADE;
     audio_odometer = read_odometer();
 
-    if(g_game->init_screens) g_game->init_screens();
-    build_maps();
     return 1;
 }
 
@@ -598,14 +603,14 @@ static void build_maps(void){
                 unsigned char b = gw_segments[nib >> 1];
                 unsigned char n = (nib & 1) ? (b & 0xF) : (b >> 4);
                 if(n != transparent){
-                    if(s->pixel_seg[gy][gx] == 0xFF){
-                        s->pixel_seg[gy][gx] = (u8)seg;
+                    if(s->pixel_seg[gy][gx] == 0xFFFF){
+                        s->pixel_seg[gy][gx] = (u16)seg;
                         s->pixel_int[gy][gx] = n;
                     } else if(s->pixel_seg[gy][gx] != seg &&
-                              s->pixel_seg2[gy][gx] == 0xFF){
+                              s->pixel_seg2[gy][gx] == 0xFFFF){
                         /* 2nd segment claiming the same pixel. rebuild_tile()
                            combines the active intensities independently of order. */
-                        s->pixel_seg2[gy][gx] = (u8)seg;
+                        s->pixel_seg2[gy][gx] = (u16)seg;
                         s->pixel_int2[gy][gx] = n;
                     }
                 }
@@ -632,4 +637,5 @@ static void build_maps(void){
     }
 
 }
+
 

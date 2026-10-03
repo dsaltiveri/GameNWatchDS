@@ -28,7 +28,8 @@ bool gw_system_config();
 void gw_system_start();
 void gw_system_reset();
 
-// Run some clock cycles
+/* Produce clock_cycles consecutive audio samples (1..GW_AUDIO_BUFFER_LENGTH).
+   Returns the new clock samples generated, including pending instruction tails. */
 int gw_system_run(int clock_cycles);
 
 // Audio init

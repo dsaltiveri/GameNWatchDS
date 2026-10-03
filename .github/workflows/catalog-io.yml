@@ -1,0 +1,14 @@
+name: Catalog and file I/O tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  catalog-io:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test header identity, catalog growth and file errors
+        run: python3 tools/run_catalog_io_tests.py --sanitize

@@ -6,66 +6,11 @@
 
 #include "games.h"
 
-const game_desc_t *const games[] = {
-    &game_ball,
-    &game_bfight,
-    &game_bfightn,
-    &game_bjack,
-    &game_boxing,
-    &game_bsweep,
-    &game_cgrab,
-    &game_chef,
-    &game_climber,
-    &game_climbern,
-    &game_dkhockey,
-    &game_dkjr,
-    &game_dkjrp,
-    &game_dkcirc,
-    &game_dkong,
-    &game_dkong2,
-    &game_dkong3,
-    &game_egg,
-    &game_fire,
-    &game_fireatk,
-    &game_fires,
-    &game_flagman,
-    &game_gcliff,
-    &game_ghouse,
-    &game_helmet,
-    &game_judge,
-    &game_lboat,
-    &game_lion,
-    &game_mariocm,
-    &game_mariocmt,
-    &game_manhole,
-    &game_manholeg,
-    &game_mario,
-    &game_mariotj,
-    &game_mbaway,
-    &game_mickdon,
-    &game_mmouse,
-    &game_mmousep,
-    &game_octopus,
-    &game_opanic,
-    &game_pchute,
-    &game_pinball,
-    &game_popeye,
-    &game_popeyep,
-    &game_rshower,
-    &game_sbuster,
-    &game_stennis,
-    &game_snoopyp,
-    &game_squish,
-    &game_smb,
-    &game_smbn,
-    &game_ssparky,
-    &game_tfish,
-    &game_tbridge,
-    &game_vermin,
-    &game_zelda,
-};
+#define GAME_POINTER(name) &game_##name,
+const game_desc_t *const games[GAME_COUNT] = { GAME_CATALOG(GAME_POINTER) };
+#undef GAME_POINTER
 
-const int game_count = 56;
+const int game_count = sizeof(games) / sizeof(games[0]);
 
 /* File name of a path, ignoring the device ("sd:/roms/gnw/x.gnw") and folders. */
 static const char *file_name(const char *path){
@@ -95,7 +40,7 @@ const game_desc_t *games_find_by_file(const char *path){
 const game_desc_t *games_find_by_rom(const char *cpu_name, const char *rom_sig){
     if (!cpu_name || !cpu_name[0] || !rom_sig || !rom_sig[0]) return NULL;
     size_t len = strlen(rom_sig);
-    if (len > 8) len = 8;                 /* 8 bytes in the header */
+    if (len != 8) return NULL;                 /* 8 bytes in the header */
 
     for (int i = 0; i < game_count; i++){
         const game_desc_t *g = games[i];
@@ -108,4 +53,5 @@ const game_desc_t *games_find_by_rom(const char *cpu_name, const char *rom_sig){
     }
     return NULL;
 }
+
 

@@ -14,7 +14,7 @@ import tempfile
 
 from PIL import Image, ImageChops
 
-from game_catalog import EXPECTED_GAME_COUNT, gnw_path, load_catalog
+from game_catalog import gnw_path, load_catalog
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -348,10 +348,6 @@ def parse_args(catalog):
 def main():
     catalog = load_catalog(ROOT)
     args = parse_args(catalog)
-    if len(catalog) != EXPECTED_GAME_COUNT:
-        raise RuntimeError(
-            f"Catalog has {len(catalog)} entries; expected {EXPECTED_GAME_COUNT}")
-
     rom = args.rom.resolve()
     if not rom.is_file():
         raise RuntimeError(f"Missing ROM: {rom} (run make first)")
@@ -359,7 +355,7 @@ def main():
                    if not gnw_path(ROOT, game).is_file()]
     if all_missing:
         raise RuntimeError(
-            "Missing .gnw file(s); the menu must expose all 56 games:\n" +
+            "Missing .gnw file(s); the menu must expose the entire catalog:\n" +
             "\n".join(all_missing))
 
     selected = catalog if args.game == "all" else tuple(
@@ -433,3 +429,4 @@ if __name__ == "__main__":
     except (OSError, RuntimeError, ValueError) as exc:
         print("ERROR:", exc, file=sys.stderr)
         sys.exit(1)
+

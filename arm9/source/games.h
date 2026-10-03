@@ -7,64 +7,17 @@
 
 #include "emulator.h"
 
-extern const game_desc_t game_ball;
-extern const game_desc_t game_fires;
-extern const game_desc_t game_vermin;
-extern const game_desc_t game_helmet;
-extern const game_desc_t game_octopus;
-extern const game_desc_t game_pchute;
-extern const game_desc_t game_popeye;
-extern const game_desc_t game_chef;
-extern const game_desc_t game_egg;
-extern const game_desc_t game_flagman;
-extern const game_desc_t game_judge;
-extern const game_desc_t game_lion;
-extern const game_desc_t game_manholeg;
-extern const game_desc_t game_mmouse;
-extern const game_desc_t game_dkjr;
-extern const game_desc_t game_dkjrp;
-extern const game_desc_t game_dkcirc;
-extern const game_desc_t game_fireatk;
-extern const game_desc_t game_manhole;
-extern const game_desc_t game_mariocm;
-extern const game_desc_t game_mariocmt;
-extern const game_desc_t game_stennis;
-extern const game_desc_t game_snoopyp;
-extern const game_desc_t game_tbridge;
-extern const game_desc_t game_tfish;
-extern const game_desc_t game_bfightn;
-extern const game_desc_t game_climbern;
-extern const game_desc_t game_mariotj;
-extern const game_desc_t game_mbaway;
-extern const game_desc_t game_dkong;
-extern const game_desc_t game_ghouse;
-extern const game_desc_t game_opanic;
-extern const game_desc_t game_squish;
-extern const game_desc_t game_bjack;
-extern const game_desc_t game_bsweep;
-extern const game_desc_t game_gcliff;
-extern const game_desc_t game_pinball;
-extern const game_desc_t game_sbuster;
-extern const game_desc_t game_zelda;
-extern const game_desc_t game_mario;
-extern const game_desc_t game_rshower;
-extern const game_desc_t game_dkong2;
-extern const game_desc_t game_fire;
-extern const game_desc_t game_lboat;
-extern const game_desc_t game_mickdon;
-extern const game_desc_t game_smbn;
-extern const game_desc_t game_popeyep;
-extern const game_desc_t game_mmousep;
-extern const game_desc_t game_bfight;
-extern const game_desc_t game_boxing;
-extern const game_desc_t game_cgrab;
-extern const game_desc_t game_climber;
-extern const game_desc_t game_dkhockey;
-extern const game_desc_t game_dkong3;
-extern const game_desc_t game_smb;
-extern const game_desc_t game_ssparky;
+#include "game_catalog.h"
 
-extern const game_desc_t *const games[];
+#define GAME_DECLARE(name) extern const game_desc_t game_##name;
+GAME_CATALOG(GAME_DECLARE)
+#undef GAME_DECLARE
+
+#define GAME_COUNT_ENTRY(name) + 1
+enum { GAME_COUNT = 0 GAME_CATALOG(GAME_COUNT_ENTRY) };
+#undef GAME_COUNT_ENTRY
+
+extern const game_desc_t *const games[GAME_COUNT];
 extern const int game_count;
 
 /* Looks up a descriptor by the file name of a .gnw, no matter the folder or the
@@ -80,3 +33,4 @@ const game_desc_t *games_find_by_file(const char *path);
 const game_desc_t *games_find_by_rom(const char *cpu_name, const char *rom_sig);
 
 #endif /* _GAMES_H_ */
+

@@ -19,6 +19,14 @@
 /* Footer of the notices shown when the game cannot be opened. */
 #define NOTICE_FOOTER "A: BACK TO THE LAUNCHER"
 
+/* Use the package identity for every entry point, including the SD menu. */
+static const game_desc_t *game_from_header(const char *path){
+    char cpu[9], sig[9];
+    if (!launcher_read_rom_id(path, cpu, sig))
+        return NULL;
+    return games_find_by_rom(cpu, sig);
+}
+
 /* Boots the .gnw named in the command line. Returns 1 when there was an
    argument (the game has run or a notice is on screen) and 0 to show the menu. */
 static int boot_from_loader(int argc, char **argv){
@@ -36,14 +44,9 @@ static int boot_from_loader(int argc, char **argv){
         return 1;
     }
 
-    /* The .gnw is identified by its file name; a renamed copy is recognised by
-       the CPU and ROM signature of its own header. */
-    const game_desc_t *g = games_find_by_file(path);
-    if (!g){
-        char cpu[9], sig[9];
-        if (launcher_read_rom_id(path, cpu, sig))
-            g = games_find_by_rom(cpu, sig);
-    }
+    /* The header determines controls and display layout even if this file
+       has been renamed to another catalog game's usual filename. */
+    const game_desc_t *g = game_from_header(path);
     if (!g){
         menu_show_notice("UNKNOWN .GNW", path,
                          "NOT A GAME & WATCH ROM FOR THIS EMULATOR", NOTICE_FOOTER);
@@ -74,10 +77,13 @@ int main(int argc, char **argv){
         if(idx < 0 || idx >= game_count) break;
         /* Infinite game loop; returns 1 with R and 0 if the ROM could
            not be loaded (the .gnw is missing from the SD). */
-        if(emulator_run(games[idx]))
+        const char *path = games[idx]->rom_path;
+        const game_desc_t *g = game_from_header(path);
+        if(g && emulator_run_path(g, path))
             last = idx;   /* actually played -> remember it */
         else
             menu_show_error(games[idx]->rom_path);
     }
     return 0;
 }
+

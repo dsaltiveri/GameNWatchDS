@@ -308,9 +308,19 @@ bool gw_romloader_load_file(const char *path)
       return false;
    }
 
-   fseek(f, 0, SEEK_END);
+   if (fseek(f, 0, SEEK_END) != 0)
+   {
+      printf("GW could not seek: %s\n", path);
+      fclose(f);
+      return false;
+   }
    long sz = ftell(f);
-   fseek(f, 0, SEEK_SET);
+   if (sz < 0 || fseek(f, 0, SEEK_SET) != 0)
+   {
+      printf("GW could not read position: %s\n", path);
+      fclose(f);
+      return false;
+   }
 
    if (sz <= 0 || (unsigned long)sz > GW_ROM_MAX_SIZE)
    {
@@ -344,3 +354,4 @@ bool gw_romloader()
 {
    return gw_romloader_load(gw_rom_buffer, loaded_rom_size);
 }
+

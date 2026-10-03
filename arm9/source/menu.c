@@ -128,7 +128,7 @@ static void menu_rows_to(int row){
 }
 
 /* Indexes of games whose .gnw exists in /gnw/ (built when the menu opens). */
-static int g_visible[64];
+static int g_visible[GAME_COUNT];
 static int g_visible_count = 0;
 
 /* Auto-scan of /gnw/: walks the directory with opendir/readdir (newlib
@@ -138,6 +138,7 @@ static int g_visible_count = 0;
    the render config from game_*.c). */
 static void menu_build_visible(void){
     g_visible_count = 0;
+    bool seen[GAME_COUNT] = {false};
     DIR *dir = opendir("/gnw");
     if (!dir) return;
     struct dirent *de;
@@ -150,7 +151,10 @@ static void menu_build_visible(void){
         snprintf(full, sizeof(full), "/gnw/%s", fname);
         for (int i = 0; i < game_count; i++){
             if (strcasecmp(full, games[i]->rom_path) == 0){
-                g_visible[g_visible_count++] = i;
+                if (!seen[i] && g_visible_count < GAME_COUNT){
+                    g_visible[g_visible_count++] = i;
+                    seen[i] = true;
+                }
                 break;
             }
         }
@@ -337,3 +341,4 @@ void menu_show_error(const char *msg){
     menu_show_notice("COULD NOT LOAD", msg, "COPY THE .GNW INTO THE /gnw/ FOLDER",
                      "A: BACK TO THE MENU");
 }
+

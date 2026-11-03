@@ -1,0 +1,2 @@
+blocksds_testing==0.1.0
+-r GNWBuilder/requirements-dev.txt

@@ -1,0 +1,43 @@
+# Build artifacts (NDS)
+/build/
+
+# GNWBuilder output packages (cache and previews live under /build/)
+/gnw/
+
+*.elf
+*.nds
+*.map
+*.lst
+
+# Local origins (large ZIPs, not committed to the repo)
+/artwork/
+/roms/
+
+# Optional local MAME source used by tools/_check_mame_kb.py
+/tools/hh_sm510.cpp
+
+# Optional editor database (regenerated with `make compdb`)
+/compile_commands.json
+
+# Background process logs (.gnw regeneration)
+/logs/
+
+# Python / virtual environments
+__pycache__/
+*.pyc
+.venv/
+
+# Compiled/binary executables
+*.exe
+*.bin
+!/GNWBuilder.exe
+assets/*/gfx/*15_linear.raw
+build/*_grit/
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Generated packages and private research evidence
+/dist/
+/experiments/artifacts/

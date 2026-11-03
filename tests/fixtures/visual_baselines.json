@@ -1,0 +1,29 @@
+{
+  "games": {
+    "cgrab": {
+      "playing-a": "4d34da353a00ebb24921269088b4623b55bd389a7d914caa1325d483b957e585",
+      "playing-b": "8ea70412677f09310007bc09e452a6492396b4ada63732322f04867df16208e5"
+    },
+    "dkjr": {
+      "playing-a": "688c593fa8cfde9f8cfdcf1e9047fed8b9faf3238a14b927be76033cdf745a27",
+      "playing-b": "aa1918149ecefef890857649460fb533f2ac906f81b95a14ca3543e6e8868138"
+    },
+    "fire": {
+      "playing-a": "1d94bd242aec5ada8ea361793ce46bb3b55fe2cd0aae4b2bce77b85c22465906",
+      "playing-b": "4b8aef8332d50c3416c877dbe3728d0d7d8278edad91c5bd3b417751ef604a1e"
+    },
+    "smbn": {
+      "playing-a": "4721082c8f8858931c2f9930375fdc30bb45635b58345fb934e7709022c81beb",
+      "playing-b": "a6406917db93163c7d10f51cae2382f8e8a14f17f06e16038dab1764afb16b90"
+    },
+    "snoopyp": {
+      "playing-a": "2969e46a69274d2f62a7b1c75f43c5714ad97bb7e7570f90dce1a26778c656a6",
+      "playing-b": "aaebae1598da069e7484eb23e4634c867bc5fe1e7024a114b79087c6fd49e1b4"
+    },
+    "zelda": {
+      "playing-a": "982434ffc37dad1eeefe31d4d8350be92a38841805db7b684d8f3c573f2c381f",
+      "playing-b": "71ad16ae3177cb01b9c836e254696c0488a107816703978733bf211d960e4d71"
+    }
+  },
+  "schema": 1
+}

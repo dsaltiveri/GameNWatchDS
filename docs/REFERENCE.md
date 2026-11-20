@@ -156,7 +156,7 @@ Install the Python dependencies only when rebuilding GNWBuilder or running the
 development tests:
 
 ```powershell
-py -3 -m pip install -r requirements-dev.txt
+py -3 -m pip install -r GNWBuilder/requirements-dev.txt
 ```
 
 ```powershell
